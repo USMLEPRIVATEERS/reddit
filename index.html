@@ -200,6 +200,120 @@
 
     // ====== MASSIVE EXTRACTION UTILITIES ======
 
+    // ====== REDDIT OAUTH AUTHENTICATION ======
+    const REDDIT_CONFIG = {
+      clientId: 'iPagH5d7PqbKGh9smFGKTA',
+      clientSecret: 'KWncsZ_1X54333l5wlm55ORmp3Uo9w',
+      username: 'Purple_Ad7096',
+      password: '', // 👈 COLOQUE SUA SENHA AQUI ENTRE AS ASPAS (ex: 'minhasenha123')
+      userAgent: 'web:scrap:v1.0.0 (by /u/Purple_Ad7096)',
+    };
+
+    let redditAccessToken = null;
+    let tokenExpiry = 0;
+
+    // Prompt user for Reddit password (stored in memory only)
+    async function promptForPassword() {
+      if (REDDIT_CONFIG.password) {
+        return REDDIT_CONFIG.password;
+      }
+
+      const password = prompt(
+        '🔐 Enter your Reddit password to use Official API\n\n' +
+        'This enables faster, more reliable data fetching.\n' +
+        'Your password is stored in memory only and never saved.\n\n' +
+        'Click Cancel to use CORS proxies instead (slower, less reliable).'
+      );
+
+      if (password) {
+        REDDIT_CONFIG.password = password;
+        return password;
+      }
+
+      return null;
+    }
+
+    // Get Reddit OAuth token
+    async function getRedditToken() {
+      // Check if we have a valid token
+      if (redditAccessToken && Date.now() < tokenExpiry) {
+        return redditAccessToken;
+      }
+
+      // Prompt for password if not set
+      const password = await promptForPassword();
+      if (!password) {
+        console.warn('⚠️ No Reddit password provided, will use CORS proxies');
+        return null;
+      }
+
+      // Check if credentials are configured
+      if (!REDDIT_CONFIG.clientSecret) {
+        console.warn('⚠️ Reddit OAuth not configured, will use CORS proxies');
+        return null;
+      }
+
+      try {
+        const auth = btoa(`${REDDIT_CONFIG.clientId}:${REDDIT_CONFIG.clientSecret}`);
+        const response = await fetch('https://www.reddit.com/api/v1/access_token', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': REDDIT_CONFIG.userAgent,
+          },
+          body: new URLSearchParams({
+            grant_type: 'password',
+            username: REDDIT_CONFIG.username,
+            password: REDDIT_CONFIG.password,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`OAuth failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+        redditAccessToken = data.access_token;
+        tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000; // Refresh 1 min early
+
+        console.log('✅ Reddit OAuth authenticated successfully');
+        return redditAccessToken;
+      } catch (error) {
+        console.error('❌ Reddit OAuth failed:', error);
+        return null;
+      }
+    }
+
+    // Make authenticated Reddit API request
+    async function redditApiRequest(endpoint) {
+      const token = await getRedditToken();
+
+      if (!token) {
+        // Fall back to old proxy method
+        return null;
+      }
+
+      try {
+        const response = await fetch(`https://oauth.reddit.com${endpoint}`, {
+          headers: {
+            'Authorization': `bearer ${token}`,
+            'User-Agent': REDDIT_CONFIG.userAgent,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Reddit API error: ${response.status}`);
+        }
+
+        const text = await response.text();
+        return { text, proxyType: 'raw' };
+      } catch (error) {
+        console.error('❌ Reddit API request failed:', error);
+        return null;
+      }
+    }
+
     // CORS Proxy System with fallback - Updated 2025
     const CORS_PROXIES = [
       { url: 'https://api.allorigins.win/get?url=', format: 'param', responseType: 'wrapped' },
@@ -213,6 +327,26 @@
 
     // Helper function to make CORS-safe requests
     async function corsAwareFetch(url, options = {}) {
+      // Try Reddit Official API first if it's a reddit.com URL
+      if (url.includes('reddit.com')) {
+        try {
+          // Convert www.reddit.com URL to oauth endpoint
+          const urlObj = new URL(url);
+          const endpoint = urlObj.pathname + urlObj.search;
+
+          console.log('🔑 Attempting Reddit Official API...');
+          const result = await redditApiRequest(endpoint);
+
+          if (result) {
+            console.log('✅ Reddit Official API succeeded!');
+            return result;
+          }
+        } catch (error) {
+          console.warn('⚠️ Reddit API failed, falling back to proxies:', error.message);
+        }
+      }
+
+      // Fall back to CORS proxies
       const maxRetries = CORS_PROXIES.length;
       let lastError = null;
 
