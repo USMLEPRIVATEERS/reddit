@@ -202,11 +202,11 @@
 
     // CORS Proxy System with fallback - Updated 2025
     const CORS_PROXIES = [
-      { url: 'https://proxy.cors.sh/', format: 'prepend' },
-      { url: 'https://api.allorigins.win/raw?url=', format: 'param' },
-      { url: 'https://cors.bridged.cc/', format: 'prepend' },
-      { url: 'https://crossorigin.me/', format: 'prepend' },
-      { url: 'https://api.codetabs.com/v1/proxy?quest=', format: 'param' },
+      { url: 'https://api.allorigins.win/get?url=', format: 'param', responseType: 'wrapped' },
+      { url: 'https://api.allorigins.win/raw?url=', format: 'param', responseType: 'raw' },
+      { url: 'https://cors.bridged.cc/', format: 'prepend', responseType: 'raw' },
+      { url: 'https://crossorigin.me/', format: 'prepend', responseType: 'raw' },
+      { url: 'https://api.codetabs.com/v1/proxy?quest=', format: 'param', responseType: 'raw' },
     ];
 
     let currentProxyIndex = 0;
@@ -225,13 +225,11 @@
 
           console.log(`🌐 Attempting fetch via proxy ${currentProxyIndex + 1}/${CORS_PROXIES.length}: ${proxyUrl}`);
 
+          // Don't add custom headers - they trigger CORS preflight which most proxies don't support
           const response = await fetch(proxyUrl, {
             ...options,
             headers: {
               ...options.headers,
-              'Accept': 'application/json',
-              'Origin': window.location.origin || 'https://usmleprivateers.github.io',
-              'x-requested-with': 'XMLHttpRequest',
             }
           });
 
@@ -240,7 +238,9 @@
           }
 
           console.log(`✅ Proxy ${currentProxyIndex + 1} succeeded!`);
-          return response;
+
+          // Return both response and proxy metadata
+          return { response, proxyType: proxy.responseType };
         } catch (error) {
           console.warn(`⚠️ Proxy ${currentProxyIndex + 1} failed:`, error.message);
           lastError = error;
@@ -260,13 +260,36 @@
     }
 
     // Safe JSON parsing helper to handle HTML responses from proxies
-    async function safeJsonParse(response) {
+    async function safeJsonParse(responseObj) {
+      // Handle both old format (just response) and new format ({ response, proxyType })
+      const response = responseObj.response || responseObj;
+      const proxyType = responseObj.proxyType || 'raw';
+
       // Check Content-Type header
       const contentType = response.headers.get('content-type');
 
       // Get the response text first
       const text = await response.text();
 
+      // For wrapped responses (allorigins/get), extract the contents field
+      if (proxyType === 'wrapped') {
+        try {
+          const wrapper = JSON.parse(text);
+          if (wrapper.contents) {
+            // Parse the contents field which has the actual Reddit JSON
+            return JSON.parse(wrapper.contents);
+          } else if (wrapper.status && wrapper.status.http_code >= 400) {
+            throw new Error(`Proxy error: HTTP ${wrapper.status.http_code}`);
+          } else {
+            throw new Error('Wrapped response missing contents field');
+          }
+        } catch (err) {
+          if (err.message.includes('Proxy error')) throw err;
+          throw new Error(`Failed to parse wrapped response: ${err.message}`);
+        }
+      }
+
+      // For raw responses, handle normally
       // Check if response is HTML
       if (text.trim().startsWith('<') || text.trim().toLowerCase().startsWith('<!doctype')) {
         throw new Error('Proxy returned HTML instead of JSON. This usually means the proxy is blocked or the URL is invalid.');
@@ -1035,12 +1058,8 @@
             throw new Error('Invalid Reddit post URL.');
           }
 
-          const response = await corsAwareFetch(`${postUrl}.json`);
-          if (!response.ok) {
-            throw new Error('Failed to fetch the Reddit post.');
-          }
-
-          const data = await safeJsonParse(response);
+          const responseObj = await corsAwareFetch(`${postUrl}.json`);
+          const data = await safeJsonParse(responseObj);
 
           const post = data[0]?.data?.children[0]?.data;
           if (!post) {
@@ -1089,11 +1108,8 @@
 
           const data = await limiter.execute(async () => {
             return await retryWithBackoff(async () => {
-              const response = await corsAwareFetch(`${postUrl}.json?limit=500&depth=10&sort=top`);
-              if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: Failed to fetch comments`);
-              }
-              return await safeJsonParse(response);
+              const responseObj = await corsAwareFetch(`${postUrl}.json?limit=500&depth=10&sort=top`);
+              return await safeJsonParse(responseObj);
             });
           });
 
@@ -1180,12 +1196,8 @@
             setExtractionLog(prev => [...prev, `📄 Search page ${pageCount} (${fetchedPosts.length}/${numPostsToSave})`]);
 
             try {
-              const response = await corsAwareFetch(apiUrl);
-              if (!response.ok) {
-                throw new Error('Failed to fetch search results from API.');
-              }
-
-              const data = await safeJsonParse(response);
+              const responseObj = await corsAwareFetch(apiUrl);
+              const data = await safeJsonParse(responseObj);
               console.log(`📊 Page ${pageCount} returned ${data.data.children.length} results`);
 
               const posts = data.data.children
@@ -1302,11 +1314,8 @@
               // Use rate limiter and retry logic
               const data = await rateLimiter.execute(async () => {
                 return await retryWithBackoff(async () => {
-                  const response = await corsAwareFetch(apiUrl);
-                  if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: Failed to fetch subreddit listing`);
-                  }
-                  return await safeJsonParse(response);
+                  const responseObj = await corsAwareFetch(apiUrl);
+                  return await safeJsonParse(responseObj);
                 });
               });
 
