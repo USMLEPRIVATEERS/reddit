@@ -1532,9 +1532,11 @@
           let after = null;
           let pageCount = 0;
           let totalScanned = 0;
+          const REDDIT_PAGINATION_WARNING = 1000; // Reddit API limitation
 
           // Fetch ALL posts from subreddit (not search endpoint)
-          while (fetchedPosts.length < numPostsToSave && pageCount < 100) {
+          // Continue until we reach target or Reddit stops returning data
+          while (fetchedPosts.length < numPostsToSave) {
             let apiUrl = `https://www.reddit.com/r/${subreddit}/${sort}.json?limit=100`;
 
             if (after) {
@@ -1610,9 +1612,15 @@
               fetchedPosts = [...fetchedPosts, ...posts];
               after = data.data.after;
 
+              // Warn about Reddit pagination limitation
+              if (totalScanned >= REDDIT_PAGINATION_WARNING && totalScanned < REDDIT_PAGINATION_WARNING + 100) {
+                console.log('⚠️ WARNING: Approaching Reddit API pagination limit (~1000 posts)');
+                setExtractionLog(prev => [...prev, '⚠️ Note: Reddit API may stop returning data after ~1000 posts']);
+              }
+
               if (!after) {
-                console.log('🏁 Reached end of subreddit listing');
-                setExtractionLog(prev => [...prev, '🏁 Listing: end reached']);
+                console.log('🏁 Reached end of subreddit listing (no more "after" token)');
+                setExtractionLog(prev => [...prev, '🏁 Listing: Reddit stopped returning data']);
                 break;
               }
 
@@ -2538,6 +2546,8 @@ const handleCopyLinks = () => {
 
                   <div className="text-xs text-secondary bg-yellow-50 p-2 rounded">
                     💡 Use this if Reddit search only shows recent posts (usually ~4 months). This method scans ALL posts in the subreddit and filters locally by your keyword.
+                    <br/><br/>
+                    ⚠️ <strong>Note:</strong> Reddit API has a pagination limit of ~1000 posts. The scan will continue until Reddit stops returning data or your target is reached.
                   </div>
                 </div>
 
