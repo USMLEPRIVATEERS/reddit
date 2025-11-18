@@ -200,11 +200,13 @@
 
     // ====== MASSIVE EXTRACTION UTILITIES ======
 
-    // CORS Proxy System with fallback
+    // CORS Proxy System with fallback - Updated 2025
     const CORS_PROXIES = [
-      'https://corsproxy.io/?',
-      'https://api.allorigins.win/raw?url=',
-      'https://api.codetabs.com/v1/proxy?quest=',
+      { url: 'https://proxy.cors.sh/', format: 'prepend' },
+      { url: 'https://api.allorigins.win/raw?url=', format: 'param' },
+      { url: 'https://cors.bridged.cc/', format: 'prepend' },
+      { url: 'https://crossorigin.me/', format: 'prepend' },
+      { url: 'https://api.codetabs.com/v1/proxy?quest=', format: 'param' },
     ];
 
     let currentProxyIndex = 0;
@@ -216,7 +218,11 @@
 
       for (let i = 0; i < maxRetries; i++) {
         try {
-          const proxyUrl = CORS_PROXIES[currentProxyIndex] + encodeURIComponent(url);
+          const proxy = CORS_PROXIES[currentProxyIndex];
+          const proxyUrl = proxy.format === 'prepend'
+            ? proxy.url + url
+            : proxy.url + encodeURIComponent(url);
+
           console.log(`🌐 Attempting fetch via proxy ${currentProxyIndex + 1}/${CORS_PROXIES.length}: ${proxyUrl}`);
 
           const response = await fetch(proxyUrl, {
@@ -224,6 +230,8 @@
             headers: {
               ...options.headers,
               'Accept': 'application/json',
+              'Origin': window.location.origin || 'https://usmleprivateers.github.io',
+              'x-requested-with': 'XMLHttpRequest',
             }
           });
 
