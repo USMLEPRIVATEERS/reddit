@@ -922,7 +922,7 @@
 
           if (pathname.includes('/comments/')) return 'post';
 
-          const subredditListingRegex = /^\/r\/[^/]+(\/(new|hot|top|rising|controversial))?\/?$/;
+          const subredditListingRegex = /^\/r\/[^/]+(\/(best|new|hot|top|rising|controversial))?\/?$/;
           if (subredditListingRegex.test(pathname)) return 'listing';
 
           const searchRegex = /^\/r\/[^/]+\/search\/?$/;
@@ -1764,7 +1764,7 @@
           const subreddit = pathSegments[1];
           let listingType = pathSegments[2] || 'hot';
 
-          const allowedListingTypes = ['hot', 'new', 'top', 'rising', 'controversial'];
+          const allowedListingTypes = ['best', 'hot', 'new', 'top', 'rising', 'controversial'];
           if (!allowedListingTypes.includes(listingType)) {
             listingType = 'hot';
           }
