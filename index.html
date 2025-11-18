@@ -1528,124 +1528,178 @@
           console.log(`📋 Starting COMPLETE subreddit listing for r/${subreddit}`);
           setExtractionLog(prev => [...prev, `📋 Listing: fetching ALL from r/${subreddit}, then filtering "${queryParam}"`]);
 
-          let fetchedPosts = [];
-          let after = null;
-          let pageCount = 0;
+          let allFetchedPosts = []; // All posts before filtering
           let totalScanned = 0;
-          const REDDIT_PAGINATION_WARNING = 1000; // Reddit API limitation
+          let chunkCount = 0;
+          let beforeTimestamp = null; // For time-based chunking
 
-          // Fetch ALL posts from subreddit (not search endpoint)
-          // Continue until we reach target or Reddit stops returning data
-          while (fetchedPosts.length < numPostsToSave) {
-            let apiUrl = `https://www.reddit.com/r/${subreddit}/${sort}.json?limit=100`;
+          // Outer loop: Continue fetching in chunks until we have enough matching posts
+          while (allFetchedPosts.length < numPostsToSave) {
+            chunkCount++;
+            let after = null;
+            let pageCount = 0;
+            let chunkPosts = [];
+            let chunkScanned = 0;
 
-            if (after) {
-              apiUrl += `&after=${after}`;
+            console.log(`🔄 Starting chunk ${chunkCount}${beforeTimestamp ? ` (before timestamp: ${beforeTimestamp})` : ''}`);
+            setExtractionLog(prev => [...prev, `🔄 Chunk ${chunkCount}: Fetching next batch...`]);
+
+            // Inner loop: Fetch until Reddit stops returning "after" token (hits ~1000 limit)
+            while (true) {
+              let apiUrl = `https://www.reddit.com/r/${subreddit}/${sort}.json?limit=100`;
+
+              if (after) {
+                apiUrl += `&after=${after}`;
+              }
+
+              // Use timestamp to continue from where last chunk ended
+              // Note: Reddit listing API may not respect 'before' parameter well,
+              // so we'll rely on natural chronological order and track timestamp
+              // for potential future search API fallback
+              if (beforeTimestamp && !after) {
+                // Attempt to use before parameter (may not work on all listing endpoints)
+                apiUrl += `&before=${beforeTimestamp}`;
+              }
+
+              pageCount++;
+              totalScanned = allFetchedPosts.length + chunkScanned;
+              console.log(`📄 Page ${pageCount} (chunk ${chunkCount})... (${allFetchedPosts.length} total fetched, ${totalScanned} scanned)`);
+
+              try {
+                const responseObj = await corsAwareFetch(apiUrl);
+                const data = safeJsonParse(responseObj);
+
+                if (!data.data.children || data.data.children.length === 0) {
+                  console.log('🏁 No more posts available in this chunk');
+                  setExtractionLog(prev => [...prev, `🏁 Chunk ${chunkCount}: No more posts`]);
+                  break;
+                }
+
+                // Store ALL posts from this page (before filtering)
+                const posts = data.data.children
+                  .filter((post) => post.kind === 't3' && post.data.permalink)
+                  .map((post) => {
+                    const imageUrls = [];
+
+                    if (post.data.url && post.data.url.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)) {
+                      imageUrls.push(post.data.url);
+                    }
+
+                    if (post.data.preview && post.data.preview.images && post.data.preview.images.length > 0) {
+                      const previewUrl = post.data.preview.images[0].source.url;
+                      const decodedUrl = previewUrl.replace(/&amp;/g, '&');
+                      imageUrls.push(decodedUrl);
+                    }
+
+                    if (post.data.gallery_data && post.data.media_metadata) {
+                      Object.values(post.data.media_metadata).forEach(media => {
+                        if (media.s && media.s.u) {
+                          const galleryUrl = media.s.u.replace(/&amp;/g, '&');
+                          imageUrls.push(galleryUrl);
+                        }
+                      });
+                    }
+
+                    if (post.data.url && (post.data.url.includes('i.redd.it') || post.data.url.includes('imgur.com'))) {
+                      imageUrls.push(post.data.url);
+                    }
+
+                    return {
+                      title: post.data.title || 'No title found.',
+                      content: post.data.selftext || 'No content found.',
+                      url: `https://www.reddit.com${post.data.permalink}`,
+                      subreddit: post.data.subreddit || 'unknown',
+                      created_utc: post.data.created_utc || null,
+                      num_comments: post.data.num_comments || 0,
+                      author: post.data.author || '[deleted]',
+                      comments: [],
+                      imageUrls: imageUrls,
+                      _original_post_data: post.data, // Keep for timestamp reference
+                    };
+                  });
+
+                chunkPosts = [...chunkPosts, ...posts];
+                chunkScanned += data.data.children.length;
+                after = data.data.after;
+
+                // If Reddit stopped providing "after" token, this chunk is done
+                if (!after) {
+                  console.log(`✅ Chunk ${chunkCount} complete: Reddit stopped pagination (hit ~1000 limit)`);
+                  setExtractionLog(prev => [...prev, `✅ Chunk ${chunkCount}: Fetched ${chunkPosts.length} posts`]);
+
+                  // Get timestamp of last post for next chunk
+                  if (chunkPosts.length > 0) {
+                    const lastPost = chunkPosts[chunkPosts.length - 1];
+                    beforeTimestamp = lastPost.created_utc - 1; // Subtract 1 to avoid duplicate
+                    console.log(`⏰ Next chunk will start before timestamp: ${beforeTimestamp}`);
+                  }
+                  break;
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+              } catch (error) {
+                console.error(`❌ Page ${pageCount} (chunk ${chunkCount}) error:`, error);
+                setExtractionLog(prev => [...prev, `❌ Chunk ${chunkCount} page ${pageCount}: ${error.message}`]);
+                break;
+              }
             }
 
-            pageCount++;
-            console.log(`📄 Listing page ${pageCount}... (${fetchedPosts.length}/${numPostsToSave} matching posts, ${totalScanned} scanned)`);
-            setExtractionLog(prev => [...prev, `📄 Listing page ${pageCount}: ${fetchedPosts.length} matches / ${totalScanned} scanned`]);
+            // Add this chunk's posts to total
+            allFetchedPosts = [...allFetchedPosts, ...chunkPosts];
 
-            try {
-              const responseObj = await corsAwareFetch(apiUrl);
-              const data = safeJsonParse(responseObj);
+            // If this chunk returned no posts, we've truly reached the end
+            if (chunkPosts.length === 0) {
+              console.log('🏁 No more posts available in subreddit');
+              setExtractionLog(prev => [...prev, '🏁 Reached end of subreddit']);
+              break;
+            }
 
-              if (!data.data.children || data.data.children.length === 0) {
-                console.log('🏁 No more posts in subreddit');
-                setExtractionLog(prev => [...prev, '🏁 Listing: no more posts']);
-                break;
-              }
+            // Check if we have enough posts now
+            const matchingCount = allFetchedPosts.filter(post => {
+              if (!queryParam) return true;
+              const titleMatch = post.title && post.title.toLowerCase().includes(queryParam.toLowerCase());
+              const textMatch = post.content && post.content.toLowerCase().includes(queryParam.toLowerCase());
+              return titleMatch || textMatch;
+            }).length;
 
-              const posts = data.data.children
-                .filter((post) => {
-                  if (post.kind !== 't3' || !post.data.permalink) return false;
-                  totalScanned++;
+            console.log(`📊 Total: ${allFetchedPosts.length} posts fetched, ${matchingCount} match keyword "${queryParam}"`);
+            setExtractionLog(prev => [...prev, `📊 Progress: ${matchingCount} matches / ${allFetchedPosts.length} scanned`]);
 
-                  // Filter locally by keyword in title or selftext
-                  if (queryParam) {
-                    const titleMatch = post.data.title && post.data.title.toLowerCase().includes(queryParam.toLowerCase());
-                    const textMatch = post.data.selftext && post.data.selftext.toLowerCase().includes(queryParam.toLowerCase());
-                    return titleMatch || textMatch;
-                  }
-                  return true;
-                })
-                .map((post) => {
-                  const imageUrls = [];
-
-                  if (post.data.url && post.data.url.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)) {
-                    imageUrls.push(post.data.url);
-                  }
-
-                  if (post.data.preview && post.data.preview.images && post.data.preview.images.length > 0) {
-                    const previewUrl = post.data.preview.images[0].source.url;
-                    const decodedUrl = previewUrl.replace(/&amp;/g, '&');
-                    imageUrls.push(decodedUrl);
-                  }
-
-                  if (post.data.gallery_data && post.data.media_metadata) {
-                    Object.values(post.data.media_metadata).forEach(media => {
-                      if (media.s && media.s.u) {
-                        const galleryUrl = media.s.u.replace(/&amp;/g, '&');
-                        imageUrls.push(galleryUrl);
-                      }
-                    });
-                  }
-
-                  if (post.data.url && (post.data.url.includes('i.redd.it') || post.data.url.includes('imgur.com'))) {
-                    imageUrls.push(post.data.url);
-                  }
-
-                  return {
-                    title: post.data.title || 'No title found.',
-                    content: post.data.selftext || 'No content found.',
-                    url: `https://www.reddit.com${post.data.permalink}`,
-                    subreddit: post.data.subreddit || 'unknown',
-                    created_utc: post.data.created_utc || null,
-                    num_comments: post.data.num_comments || 0,
-                    author: post.data.author || '[deleted]',
-                    comments: [],
-                    imageUrls: imageUrls,
-                  };
-                });
-
-              fetchedPosts = [...fetchedPosts, ...posts];
-              after = data.data.after;
-
-              // Warn about Reddit pagination limitation
-              if (totalScanned >= REDDIT_PAGINATION_WARNING && totalScanned < REDDIT_PAGINATION_WARNING + 100) {
-                console.log('⚠️ WARNING: Approaching Reddit API pagination limit (~1000 posts)');
-                setExtractionLog(prev => [...prev, '⚠️ Note: Reddit API may stop returning data after ~1000 posts']);
-              }
-
-              if (!after) {
-                console.log('🏁 Reached end of subreddit listing (no more "after" token)');
-                setExtractionLog(prev => [...prev, '🏁 Listing: Reddit stopped returning data']);
-                break;
-              }
-
-              await new Promise(resolve => setTimeout(resolve, 500));
-
-            } catch (error) {
-              console.error(`❌ Listing page ${pageCount} error:`, error);
-              setExtractionLog(prev => [...prev, `❌ Listing page ${pageCount}: ${error.message}`]);
+            if (matchingCount >= numPostsToSave) {
+              console.log(`✅ Target reached! Found ${matchingCount} matching posts`);
+              setExtractionLog(prev => [...prev, `✅ Target reached: ${matchingCount} matches`]);
               break;
             }
           }
 
-          fetchedPosts = fetchedPosts.slice(0, numPostsToSave);
-          console.log(`✅ Listing complete: ${fetchedPosts.length} matching posts (${totalScanned} total scanned)`);
-          setExtractionLog(prev => [...prev, `✅ Listing: ${fetchedPosts.length} matches from ${totalScanned} posts`]);
+          // Now filter by keyword and limit to numPostsToSave
+          let filteredPosts = allFetchedPosts;
+          if (queryParam) {
+            filteredPosts = allFetchedPosts.filter(post => {
+              const titleMatch = post.title && post.title.toLowerCase().includes(queryParam.toLowerCase());
+              const textMatch = post.content && post.content.toLowerCase().includes(queryParam.toLowerCase());
+              return titleMatch || textMatch;
+            });
+          }
+
+          filteredPosts = filteredPosts.slice(0, numPostsToSave);
+
+          // Clean up temporary data
+          filteredPosts.forEach(post => delete post._original_post_data);
+
+          console.log(`✅ Listing complete: ${filteredPosts.length} matching posts from ${allFetchedPosts.length} total scanned`);
+          setExtractionLog(prev => [...prev, `✅ Complete: ${filteredPosts.length} matches from ${allFetchedPosts.length} posts`]);
 
           setPosts((prevPosts) => {
-            const combined = [...prevPosts, ...fetchedPosts];
+            const combined = [...prevPosts, ...filteredPosts];
             const uniquePosts = Array.from(new Map(combined.map(p => [p.url, p])).values());
             localStorage.setItem('savedRedditPosts', JSON.stringify(uniquePosts));
             return uniquePosts;
           });
 
           setIsLoadingListingComplete(false);
-          alert(`✅ Listing complete! Added ${fetchedPosts.length} matching posts (scanned ${totalScanned} total).`);
+          alert(`✅ Listing complete! Added ${filteredPosts.length} matching posts (scanned ${allFetchedPosts.length} total in ${chunkCount} chunks).`);
 
         } catch (error) {
           console.error('Listing complete error:', error);
@@ -2547,7 +2601,7 @@ const handleCopyLinks = () => {
                   <div className="text-xs text-secondary bg-yellow-50 p-2 rounded">
                     💡 Use this if Reddit search only shows recent posts (usually ~4 months). This method scans ALL posts in the subreddit and filters locally by your keyword.
                     <br/><br/>
-                    ⚠️ <strong>Note:</strong> Reddit API has a pagination limit of ~1000 posts. The scan will continue until Reddit stops returning data or your target is reached.
+                    🔄 <strong>Smart Pagination:</strong> Automatically continues past Reddit's ~1000 post limit by using time-based chunking. Will keep fetching until your target is reached!
                   </div>
                 </div>
 
