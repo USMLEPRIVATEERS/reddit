@@ -587,6 +587,7 @@
       const [filterStudyPartner, setFilterStudyPartner] = useState(true);
       const [showUserNames, setShowUserNames] = useState(false);
       const [viewMode, setViewMode] = useState('allTogether');
+      const [searchAllSortVariations, setSearchAllSortVariations] = useState(false);
 
       // States for Aggregated URLs Modal
       const [showAllUrlsModal, setShowAllUrlsModal] = useState(false);
@@ -931,6 +932,53 @@
           return false;
         } catch {
           return false;
+        }
+      };
+
+      // Generate all URL variations for a given Reddit URL based on its type
+      const generateUrlVariations = (inputUrl) => {
+        try {
+          const urlType = validateRedditUrl(inputUrl);
+          if (!urlType) return [inputUrl];
+
+          const parsedUrl = new URL(inputUrl);
+          const pathname = parsedUrl.pathname;
+
+          if (urlType === 'search') {
+            // For search URLs, generate variations with different sort params
+            const searchParams = new URLSearchParams(parsedUrl.search);
+            const query = searchParams.get('q');
+            const baseSearchUrl = `${parsedUrl.origin}${pathname}`;
+
+            const sortVariations = ['relevance', 'comments', 'new', 'top', 'hot'];
+            return sortVariations.map(sort => {
+              const newParams = new URLSearchParams(parsedUrl.search);
+              newParams.set('sort', sort);
+              return `${baseSearchUrl}?${newParams.toString()}`;
+            });
+          } else if (urlType === 'listing') {
+            // For subreddit listings, generate variations with different sort types
+            const pathSegments = pathname.split('/').filter(s => s);
+            const subreddit = pathSegments[1];
+            const baseUrl = `${parsedUrl.origin}/r/${subreddit}`;
+
+            const listingVariations = ['best', 'hot', 'new', 'top', 'rising', 'controversial'];
+            return listingVariations.map(listingType => {
+              // Preserve time parameter if it exists
+              const timeParam = parsedUrl.searchParams.get('t');
+              let url = `${baseUrl}/${listingType}/`;
+              if (timeParam && (listingType === 'top' || listingType === 'controversial')) {
+                url += `?t=${timeParam}`;
+              }
+              return url;
+            });
+          } else {
+            // For individual posts, return as is (no variations)
+            return [inputUrl];
+          }
+        } catch (error) {
+          console.error('Error generating URL variations:', error);
+          return [inputUrl];
         }
       };
 
@@ -1928,13 +1976,26 @@
           return;
         }
 
-        const inputs = Array.from(
+        let inputs = Array.from(
           new Set(
             url.split(/[\n,]+/)
               .map((u) => u.trim())
               .filter((u) => u)
           )
         );
+
+        // If "Search all sort variations" is enabled, generate URL variations
+        if (searchAllSortVariations) {
+          const originalCount = inputs.length;
+          const expandedInputs = [];
+          for (const input of inputs) {
+            const variations = generateUrlVariations(input);
+            expandedInputs.push(...variations);
+          }
+          inputs = Array.from(new Set(expandedInputs)); // Remove any duplicate URLs
+          console.log(`🔄 Expanded ${originalCount} URL(s) into ${inputs.length} variation(s)`);
+        }
+
         if (inputs.length === 0) {
           setAlertMessage({ text: 'Please enter at least one valid Reddit URL or search query.', type: 'error' });
           setShowAlert(true);
@@ -1962,6 +2023,9 @@
         setExtractionLog(prev => [...prev, '🚀 Starting massive extraction system...']);
         setExtractionLog(prev => [...prev, `📊 Target: ${numPostsToSave} posts`]);
         setExtractionLog(prev => [...prev, `⚡ Rate limit: 2 req/s, Max concurrent: 5`]);
+        if (searchAllSortVariations) {
+          setExtractionLog(prev => [...prev, `🔄 Processing ${inputs.length} URL variation(s) (all sort types enabled)`]);
+        }
 
         try {
           for (const input of inputs) {
@@ -1973,14 +2037,19 @@
                 setExtractionLog(prev => [...prev, `🔍 Processing search query...`]);
 
                 const postsData = await fetchSearchResults(input);
+                let duplicatesSkipped = 0;
                 for (const postData of postsData) {
                   if (posts.some((post) => post.url === postData.url) || newPosts.some((post) => post.url === postData.url)) {
+                    duplicatesSkipped++;
                     continue;
                   }
                   newPosts.push(postData);
                   successCount++;
                   progressTracker.update({ fetchedPosts: successCount });
                   if (successCount >= numPostsToSave) break;
+                }
+                if (duplicatesSkipped > 0) {
+                  setExtractionLog(prev => [...prev, `⏭️  Skipped ${duplicatesSkipped} duplicate(s)`]);
                 }
               } catch (error) {
                 console.error('❌ Error fetching search results:', error);
@@ -2016,13 +2085,18 @@
                 setExtractionLog(prev => [...prev, `📋 Processing subreddit listing...`]);
                 const postsData = await fetchSubredditListingMassive(input, rateLimiter, progressTracker);
 
+                let duplicatesSkipped = 0;
                 for (const postData of postsData) {
                   if (posts.some((post) => post.url === postData.url) || newPosts.some((post) => post.url === postData.url)) {
+                    duplicatesSkipped++;
                     continue;
                   }
                   newPosts.push(postData);
                   successCount++;
                   if (successCount >= numPostsToSave) break;
+                }
+                if (duplicatesSkipped > 0) {
+                  setExtractionLog(prev => [...prev, `⏭️  Skipped ${duplicatesSkipped} duplicate(s)`]);
                 }
               } catch (error) {
                 console.error('❌ Error fetching subreddit listing:', error);
@@ -2515,6 +2589,16 @@ const handleCopyLinks = () => {
                       onChange={(e) => setShowUserNames(e.target.checked)}
                     />
                     <span className="ml-3 text-sm text-main font-medium">Show user names</span>
+                  </label>
+
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="checkbox w-5 h-5 rounded"
+                      checked={searchAllSortVariations}
+                      onChange={(e) => setSearchAllSortVariations(e.target.checked)}
+                    />
+                    <span className="ml-3 text-sm text-main font-medium">Search all sort variations (relevance, new, top, hot, comments)</span>
                   </label>
                 </div>
 
