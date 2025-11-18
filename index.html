@@ -1561,8 +1561,14 @@
                 apiUrl += `&after=${after}`;
               }
 
-              // Note: Reddit listing API doesn't support 'before' parameter reliably
-              // We rely on duplicate detection to stop loops instead
+              // Try to continue from timestamp (may not work on all endpoints)
+              // Duplicate detection will catch loops if this doesn't work
+              if (beforeTimestamp && !after && chunkCount > 1) {
+                // On sort=new, we can try to filter by timestamp
+                // This may or may not work depending on Reddit's API behavior
+                apiUrl += `&before=${beforeTimestamp}`;
+                console.log(`🕐 Trying to fetch posts before timestamp ${beforeTimestamp}`);
+              }
 
               pageCount++;
               console.log(`📄 Page ${pageCount} (chunk ${chunkCount})... (${totalSavedPosts}/${numPostsToSave} saved, ${totalScanned} scanned)`);
