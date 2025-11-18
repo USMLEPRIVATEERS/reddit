@@ -237,10 +237,13 @@
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
 
+          // Read response text here to catch QUIC/protocol errors before considering proxy successful
+          const text = await response.text();
+
           console.log(`✅ Proxy ${currentProxyIndex + 1} succeeded!`);
 
-          // Return both response and proxy metadata
-          return { response, proxyType: proxy.responseType };
+          // Return text and proxy metadata
+          return { text, proxyType: proxy.responseType };
         } catch (error) {
           console.warn(`⚠️ Proxy ${currentProxyIndex + 1} failed:`, error.message);
           lastError = error;
@@ -260,16 +263,10 @@
     }
 
     // Safe JSON parsing helper to handle HTML responses from proxies
-    async function safeJsonParse(responseObj) {
-      // Handle both old format (just response) and new format ({ response, proxyType })
-      const response = responseObj.response || responseObj;
+    function safeJsonParse(responseObj) {
+      // responseObj is now { text, proxyType } from corsAwareFetch
+      const text = responseObj.text;
       const proxyType = responseObj.proxyType || 'raw';
-
-      // Check Content-Type header
-      const contentType = response.headers.get('content-type');
-
-      // Get the response text first
-      const text = await response.text();
 
       // For wrapped responses (allorigins/get), extract the contents field
       if (proxyType === 'wrapped') {
@@ -293,11 +290,6 @@
       // Check if response is HTML
       if (text.trim().startsWith('<') || text.trim().toLowerCase().startsWith('<!doctype')) {
         throw new Error('Proxy returned HTML instead of JSON. This usually means the proxy is blocked or the URL is invalid.');
-      }
-
-      // Check if Content-Type suggests non-JSON
-      if (contentType && !contentType.includes('application/json') && !contentType.includes('text/plain')) {
-        console.warn(`⚠️ Unexpected content-type: ${contentType}`);
       }
 
       // Try to parse the JSON
@@ -1059,7 +1051,7 @@
           }
 
           const responseObj = await corsAwareFetch(`${postUrl}.json`);
-          const data = await safeJsonParse(responseObj);
+          const data = safeJsonParse(responseObj);
 
           const post = data[0]?.data?.children[0]?.data;
           if (!post) {
@@ -1109,7 +1101,7 @@
           const data = await limiter.execute(async () => {
             return await retryWithBackoff(async () => {
               const responseObj = await corsAwareFetch(`${postUrl}.json?limit=500&depth=10&sort=top`);
-              return await safeJsonParse(responseObj);
+              return safeJsonParse(responseObj);
             });
           });
 
@@ -1197,7 +1189,7 @@
 
             try {
               const responseObj = await corsAwareFetch(apiUrl);
-              const data = await safeJsonParse(responseObj);
+              const data = safeJsonParse(responseObj);
               console.log(`📊 Page ${pageCount} returned ${data.data.children.length} results`);
 
               const posts = data.data.children
@@ -1315,7 +1307,7 @@
               const data = await rateLimiter.execute(async () => {
                 return await retryWithBackoff(async () => {
                   const responseObj = await corsAwareFetch(apiUrl);
-                  return await safeJsonParse(responseObj);
+                  return safeJsonParse(responseObj);
                 });
               });
 
