@@ -198,6 +198,107 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
+    // ====== MASSIVE EXTRACTION UTILITIES ======
+
+    // Rate Limiter Class
+    class RateLimiter {
+      constructor(requestsPerSecond = 2) {
+        this.requestsPerSecond = requestsPerSecond;
+        this.minDelay = 1000 / requestsPerSecond;
+        this.lastRequestTime = 0;
+        this.queue = [];
+        this.processing = false;
+      }
+
+      async throttle() {
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastRequestTime;
+
+        if (timeSinceLastRequest < this.minDelay) {
+          await new Promise(resolve => setTimeout(resolve, this.minDelay - timeSinceLastRequest));
+        }
+
+        this.lastRequestTime = Date.now();
+      }
+
+      async execute(fn) {
+        await this.throttle();
+        return await fn();
+      }
+    }
+
+    // Retry Logic with Exponential Backoff
+    async function retryWithBackoff(fn, maxRetries = 4, initialDelay = 2000) {
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          return await fn();
+        } catch (error) {
+          if (i === maxRetries - 1) throw error;
+
+          const delay = initialDelay * Math.pow(2, i);
+          console.log(`Retry attempt ${i + 1}/${maxRetries} after ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    // Concurrent Request Manager
+    class ConcurrencyManager {
+      constructor(maxConcurrent = 5) {
+        this.maxConcurrent = maxConcurrent;
+        this.running = 0;
+        this.queue = [];
+      }
+
+      async run(fn) {
+        while (this.running >= this.maxConcurrent) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        this.running++;
+        try {
+          return await fn();
+        } finally {
+          this.running--;
+        }
+      }
+
+      async runBatch(tasks) {
+        return await Promise.all(tasks.map(task => this.run(task)));
+      }
+    }
+
+    // Progress Tracker
+    class ProgressTracker {
+      constructor(onUpdate) {
+        this.onUpdate = onUpdate;
+        this.stats = {
+          totalPosts: 0,
+          fetchedPosts: 0,
+          failedPosts: 0,
+          totalComments: 0,
+          fetchedComments: 0,
+          currentOperation: '',
+          startTime: Date.now(),
+          lastUpdateTime: Date.now()
+        };
+      }
+
+      update(updates) {
+        this.stats = { ...this.stats, ...updates, lastUpdateTime: Date.now() };
+        if (this.onUpdate) this.onUpdate(this.stats);
+      }
+
+      getElapsedTime() {
+        return ((Date.now() - this.stats.startTime) / 1000).toFixed(1);
+      }
+
+      getRate() {
+        const elapsed = (Date.now() - this.stats.startTime) / 1000;
+        return elapsed > 0 ? (this.stats.fetchedPosts / elapsed).toFixed(2) : 0;
+      }
+    }
+
     // Recursive Comment Component
     const Comment = ({ comment, depth = 0, showUserNames }) => {
       const paddingLeft = depth * 24;
@@ -245,6 +346,11 @@
       const [showAllUrlsModal, setShowAllUrlsModal] = useState(false);
       const [allExtractedUrls, setAllExtractedUrls] = useState([]);
       const [isExtractingUrls, setIsExtractingUrls] = useState(false);
+
+      // States for Progress Tracking
+      const [progressStats, setProgressStats] = useState(null);
+      const [showProgressModal, setShowProgressModal] = useState(false);
+      const [extractionLog, setExtractionLog] = useState([]);
 
       // Array of phrases to exclude
       const exclusionPhrases = [
@@ -616,22 +722,47 @@
           .filter((comment) => comment !== null);
       };
 
-      // Fetch comments for a post when needed
-      const fetchPostComments = async (postUrl) => {
+      // Fetch comments for a post with ENHANCED EXTRACTION
+      const fetchPostCommentsMassive = async (postUrl, rateLimiter = null) => {
         try {
-          const response = await fetch(`${postUrl}.json`);
-          if (!response.ok) {
-            throw new Error('Failed to fetch the Reddit comments.');
-          }
+          const limiter = rateLimiter || new RateLimiter(2);
 
-          const data = await response.json();
+          const data = await limiter.execute(async () => {
+            return await retryWithBackoff(async () => {
+              const response = await fetch(`${postUrl}.json?limit=500&depth=10&sort=top`);
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: Failed to fetch comments`);
+              }
+              return await response.json();
+            });
+          });
 
           const comments = extractComments(data[1]?.data?.children || []);
 
+          console.log(`💬 Fetched ${countComments(comments)} comments from post`);
+
           return comments;
         } catch (err) {
+          console.error('❌ Error fetching comments:', err);
           throw err;
         }
+      };
+
+      // Helper function to count total comments including replies
+      const countComments = (comments) => {
+        let count = 0;
+        comments.forEach(comment => {
+          count++;
+          if (comment.replies && comment.replies.length > 0) {
+            count += countComments(comment.replies);
+          }
+        });
+        return count;
+      };
+
+      // Keep old function for backwards compatibility
+      const fetchPostComments = (postUrl) => {
+        return fetchPostCommentsMassive(postUrl, null);
       };
 
       // Fetch search results from Reddit's API
@@ -707,8 +838,10 @@
         }
       };
 
-      // Fetch posts from subreddit listings (e.g., /new/, /hot/)
-      const fetchSubredditListing = async (listingUrl) => {
+      // ====== ENHANCED MASSIVE EXTRACTION FUNCTIONS ======
+
+      // Fetch posts from subreddit listings with MASSIVE EXTRACTION support
+      const fetchSubredditListingMassive = async (listingUrl, rateLimiter, progressTracker) => {
         try {
           const parsedUrl = new URL(listingUrl);
           const pathSegments = parsedUrl.pathname.split('/').filter((segment) => segment);
@@ -732,172 +865,304 @@
 
           let fetchedPosts = [];
           let after = null;
+          let pageCount = 0;
+          let consecutiveEmptyPages = 0;
 
-          while (fetchedPosts.length < numPostsToSave) {
-            let apiUrl = `https://www.reddit.com/r/${subreddit}/${listingType}.json?limit=100`;
-            if (after) {
-              apiUrl += `&after=${after}`;
-            }
-            if (listingType === 'top' || listingType === 'controversial') {
-              apiUrl += `&t=${time}`;
-            }
+          progressTracker.update({ currentOperation: `Fetching posts from r/${subreddit}...` });
 
-            console.log(`Fetching subreddit listing from API: ${apiUrl}`);
+          // Continue fetching until we hit the target or run out of posts
+          while (fetchedPosts.length < numPostsToSave && consecutiveEmptyPages < 3) {
+            try {
+              let apiUrl = `https://www.reddit.com/r/${subreddit}/${listingType}.json?limit=100`;
+              if (after) {
+                apiUrl += `&after=${after}`;
+              }
+              if (listingType === 'top' || listingType === 'controversial') {
+                apiUrl += `&t=${time}`;
+              }
 
-            const response = await fetch(apiUrl);
-            if (!response.ok) {
-              throw new Error('Failed to fetch subreddit listing.');
-            }
+              pageCount++;
+              console.log(`📄 Fetching page ${pageCount} from r/${subreddit}...`);
+              setExtractionLog(prev => [...prev, `📄 Fetching page ${pageCount}...`]);
 
-            const data = await response.json();
-
-            const posts = data.data.children
-              .filter((post) => {
-                if (post.kind !== 't3' || !post.data.permalink) return false;
-                const createdUtc = post.data.created_utc;
-                if (startTimestamp && createdUtc < startTimestamp) return false;
-                if (endTimestamp && createdUtc > endTimestamp) return false;
-                return true;
-              })
-              .map((post) => {
-                return {
-                  title: post.data.title || 'No title found.',
-                  content: post.data.selftext || 'No content found.',
-                  url: `https://www.reddit.com${post.data.permalink}`,
-                  subreddit: post.data.subreddit || 'unknown',
-                  created_utc: post.data.created_utc || null,
-                  num_comments: post.data.num_comments || 0,
-                  author: post.data.author || '[deleted]',
-                  comments: [],
-                };
+              // Use rate limiter and retry logic
+              const data = await rateLimiter.execute(async () => {
+                return await retryWithBackoff(async () => {
+                  const response = await fetch(apiUrl);
+                  if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: Failed to fetch subreddit listing`);
+                  }
+                  return await response.json();
+                });
               });
 
-            fetchedPosts = [...fetchedPosts, ...posts];
+              const posts = data.data.children
+                .filter((post) => {
+                  if (post.kind !== 't3' || !post.data.permalink) return false;
+                  const createdUtc = post.data.created_utc;
+                  if (startTimestamp && createdUtc < startTimestamp) return false;
+                  if (endTimestamp && createdUtc > endTimestamp) return false;
+                  return true;
+                })
+                .map((post) => {
+                  return {
+                    title: post.data.title || 'No title found.',
+                    content: post.data.selftext || 'No content found.',
+                    url: `https://www.reddit.com${post.data.permalink}`,
+                    subreddit: post.data.subreddit || 'unknown',
+                    created_utc: post.data.created_utc || null,
+                    num_comments: post.data.num_comments || 0,
+                    author: post.data.author || '[deleted]',
+                    comments: [],
+                  };
+                });
 
-            after = data.data.after;
-            if (!after) {
-              break;
+              if (posts.length === 0) {
+                consecutiveEmptyPages++;
+                console.log(`⚠️ Empty page detected (${consecutiveEmptyPages}/3)`);
+              } else {
+                consecutiveEmptyPages = 0;
+                fetchedPosts = [...fetchedPosts, ...posts];
+
+                // Update progress
+                progressTracker.update({
+                  fetchedPosts: fetchedPosts.length,
+                  currentOperation: `Fetched ${fetchedPosts.length}/${numPostsToSave} posts (Page ${pageCount})`
+                });
+
+                // Auto-save every 50 posts
+                if (fetchedPosts.length % 50 === 0) {
+                  console.log(`💾 Auto-saving ${fetchedPosts.length} posts...`);
+                  setExtractionLog(prev => [...prev, `💾 Auto-saved ${fetchedPosts.length} posts`]);
+                  setPosts((prevPosts) => {
+                    const newUniquePosts = fetchedPosts.filter(
+                      fp => !prevPosts.some(pp => pp.url === fp.url)
+                    );
+                    return [...newUniquePosts, ...prevPosts];
+                  });
+                }
+              }
+
+              after = data.data.after;
+              if (!after) {
+                console.log('✅ Reached end of available posts');
+                setExtractionLog(prev => [...prev, '✅ No more posts available']);
+                break;
+              }
+
+            } catch (error) {
+              console.error(`❌ Error fetching page ${pageCount}:`, error);
+              setExtractionLog(prev => [...prev, `❌ Error on page ${pageCount}: ${error.message}`]);
+              progressTracker.update({ failedPosts: progressTracker.stats.failedPosts + 1 });
+              // Continue to next page on error
             }
           }
 
           fetchedPosts = fetchedPosts.slice(0, numPostsToSave);
 
-          console.log(`Total posts fetched from listing: ${fetchedPosts.length}`);
+          console.log(`✅ Total posts fetched: ${fetchedPosts.length}`);
+          setExtractionLog(prev => [...prev, `✅ Completed! Total: ${fetchedPosts.length} posts`]);
 
           return fetchedPosts;
         } catch (error) {
-          console.error('Error fetching subreddit listing:', error);
+          console.error('❌ Critical error in fetchSubredditListingMassive:', error);
           throw error;
         }
       };
 
-      // Handle form submission to save the Reddit link or search
+      // Keep old function for backwards compatibility
+      const fetchSubredditListing = (listingUrl) => {
+        const rateLimiter = new RateLimiter(2);
+        const progressTracker = new ProgressTracker(setProgressStats);
+        return fetchSubredditListingMassive(listingUrl, rateLimiter, progressTracker);
+      };
+
+      // ====== MASSIVE EXTRACTION HANDLER ======
       const handleSaveLink = async () => {
-  setShowAlert(false);
-  setAlertMessage({ text: '', type: '' });
+        setShowAlert(false);
+        setAlertMessage({ text: '', type: '' });
 
-  if (!url.trim()) {
-    setAlertMessage({ text: 'Please enter at least one Reddit URL or search query.', type: 'error' });
-    setShowAlert(true);
-    return;
-  }
-
-  const inputs = Array.from(
-    new Set(
-      url.split(/[\n,]+/)
-        .map((u) => u.trim())
-        .filter((u) => u)
-    )
-  );
-  if (inputs.length === 0) {
-    setAlertMessage({ text: 'Please enter at least one valid Reddit URL or search query.', type: 'error' });
-    setShowAlert(true);
-    return;
-  }
-
-  setIsLoading(true);
-
-  let successCount = 0;
-  let failureCount = 0;
-  const newPosts = [];
-
-  for (const input of inputs) {
-    const urlType = validateRedditUrl(input);
-    if (urlType === 'search') {
-      try {
-        const postsData = await fetchSearchResults(input);
-        for (const postData of postsData) {
-          if (posts.some((post) => post.url === postData.url) || newPosts.some((post) => post.url === postData.url)) {
-            continue;
-          }
-          newPosts.push(postData);
-          successCount++;
-          if (successCount >= numPostsToSave) break;
+        if (!url.trim()) {
+          setAlertMessage({ text: 'Please enter at least one Reddit URL or search query.', type: 'error' });
+          setShowAlert(true);
+          return;
         }
-      } catch (error) {
-        console.error('Error fetching search results:', error);
-        failureCount++;
-      }
-    } else if (urlType === 'post') {
-      if (posts.some((post) => post.url === input) || newPosts.some((post) => post.url === input)) {
-        continue;
-      }
-      try {
-        const postData = await fetchPostData(input);
-        newPosts.push(postData);
-        successCount++;
-      } catch (error) {
-        failureCount++;
-      }
-    } else if (urlType === 'listing') {
-      try {
-        const postsData = await fetchSubredditListing(input);
-        for (const postData of postsData) {
-          if (posts.some((post) => post.url === postData.url) || newPosts.some((post) => post.url === postData.url)) {
-            continue;
-          }
-          newPosts.push(postData);
-          successCount++;
-          if (successCount >= numPostsToSave) break;
-        }
-      } catch (error) {
-        console.error('Error fetching subreddit listing:', error);
-        failureCount++;
-        setAlertMessage({ text: 'Failed to fetch subreddit listing.', type: 'error' });
-        setShowAlert(true);
-      }
-    } else {
-      failureCount++;
-    }
-    if (successCount >= numPostsToSave) break;
-  }
 
-  await Promise.all(
-    newPosts.map(async (post) => {
-      if (!post.comments || post.comments.length === 0) {
+        const inputs = Array.from(
+          new Set(
+            url.split(/[\n,]+/)
+              .map((u) => u.trim())
+              .filter((u) => u)
+          )
+        );
+        if (inputs.length === 0) {
+          setAlertMessage({ text: 'Please enter at least one valid Reddit URL or search query.', type: 'error' });
+          setShowAlert(true);
+          return;
+        }
+
+        // Initialize massive extraction system
+        setIsLoading(true);
+        setShowProgressModal(true);
+        setExtractionLog([]);
+
+        const rateLimiter = new RateLimiter(2); // 2 requests per second
+        const concurrencyManager = new ConcurrencyManager(5); // Max 5 concurrent operations
+        const progressTracker = new ProgressTracker(setProgressStats);
+
+        let successCount = 0;
+        let failureCount = 0;
+        const newPosts = [];
+
+        progressTracker.update({
+          totalPosts: numPostsToSave,
+          currentOperation: 'Starting extraction...'
+        });
+
+        setExtractionLog(prev => [...prev, '🚀 Starting massive extraction system...']);
+        setExtractionLog(prev => [...prev, `📊 Target: ${numPostsToSave} posts`]);
+        setExtractionLog(prev => [...prev, `⚡ Rate limit: 2 req/s, Max concurrent: 5`]);
+
         try {
-          post.comments = await fetchPostComments(post.url);
+          for (const input of inputs) {
+            const urlType = validateRedditUrl(input);
+
+            if (urlType === 'search') {
+              try {
+                progressTracker.update({ currentOperation: 'Fetching search results...' });
+                setExtractionLog(prev => [...prev, `🔍 Processing search query...`]);
+
+                const postsData = await fetchSearchResults(input);
+                for (const postData of postsData) {
+                  if (posts.some((post) => post.url === postData.url) || newPosts.some((post) => post.url === postData.url)) {
+                    continue;
+                  }
+                  newPosts.push(postData);
+                  successCount++;
+                  progressTracker.update({ fetchedPosts: successCount });
+                  if (successCount >= numPostsToSave) break;
+                }
+              } catch (error) {
+                console.error('❌ Error fetching search results:', error);
+                setExtractionLog(prev => [...prev, `❌ Search failed: ${error.message}`]);
+                failureCount++;
+                progressTracker.update({ failedPosts: failureCount });
+              }
+
+            } else if (urlType === 'post') {
+              if (posts.some((post) => post.url === input) || newPosts.some((post) => post.url === input)) {
+                continue;
+              }
+              try {
+                progressTracker.update({ currentOperation: 'Fetching individual post...' });
+                setExtractionLog(prev => [...prev, `📝 Fetching post...`]);
+
+                const postData = await rateLimiter.execute(async () => {
+                  return await retryWithBackoff(async () => await fetchPostData(input));
+                });
+
+                newPosts.push(postData);
+                successCount++;
+                progressTracker.update({ fetchedPosts: successCount });
+              } catch (error) {
+                console.error('❌ Error fetching post:', error);
+                setExtractionLog(prev => [...prev, `❌ Post failed: ${error.message}`]);
+                failureCount++;
+                progressTracker.update({ failedPosts: failureCount });
+              }
+
+            } else if (urlType === 'listing') {
+              try {
+                setExtractionLog(prev => [...prev, `📋 Processing subreddit listing...`]);
+                const postsData = await fetchSubredditListingMassive(input, rateLimiter, progressTracker);
+
+                for (const postData of postsData) {
+                  if (posts.some((post) => post.url === postData.url) || newPosts.some((post) => post.url === postData.url)) {
+                    continue;
+                  }
+                  newPosts.push(postData);
+                  successCount++;
+                  if (successCount >= numPostsToSave) break;
+                }
+              } catch (error) {
+                console.error('❌ Error fetching subreddit listing:', error);
+                setExtractionLog(prev => [...prev, `❌ Listing failed: ${error.message}`]);
+                failureCount++;
+                progressTracker.update({ failedPosts: failureCount });
+              }
+            } else {
+              failureCount++;
+              setExtractionLog(prev => [...prev, `❌ Invalid URL format`]);
+            }
+
+            if (successCount >= numPostsToSave) break;
+          }
+
+          // Fetch comments with controlled concurrency
+          if (newPosts.length > 0) {
+            progressTracker.update({
+              currentOperation: 'Fetching comments...',
+              totalComments: newPosts.length
+            });
+            setExtractionLog(prev => [...prev, `💬 Fetching comments for ${newPosts.length} posts...`]);
+
+            let commentsProcessed = 0;
+            const batchSize = 10;
+
+            for (let i = 0; i < newPosts.length; i += batchSize) {
+              const batch = newPosts.slice(i, i + batchSize);
+
+              await concurrencyManager.runBatch(
+                batch.map(post => async () => {
+                  if (!post.comments || post.comments.length === 0) {
+                    try {
+                      post.comments = await fetchPostCommentsMassive(post.url, rateLimiter);
+                      commentsProcessed++;
+                      progressTracker.update({
+                        fetchedComments: commentsProcessed,
+                        currentOperation: `Fetched comments ${commentsProcessed}/${newPosts.length}`
+                      });
+                    } catch (error) {
+                      console.error('❌ Error fetching comments for post:', post.url, error);
+                      post.comments = [];
+                    }
+                  }
+                })
+              );
+            }
+
+            setExtractionLog(prev => [...prev, `✅ Completed comments extraction`]);
+          }
+
+          // Final save
+          setPosts((prevPosts) => [...newPosts, ...prevPosts]);
+          setUrl('');
+
+          let message = '';
+          if (successCount > 0) {
+            message += `✅ ${successCount} post(s) extracted successfully! `;
+          }
+          if (failureCount > 0) {
+            message += `⚠️ ${failureCount} failed.`;
+          }
+
+          setExtractionLog(prev => [...prev, `\n${message}`]);
+          setExtractionLog(prev => [...prev, `⏱️ Total time: ${progressTracker.getElapsedTime()}s`]);
+          setExtractionLog(prev => [...prev, `📈 Rate: ${progressTracker.getRate()} posts/s`]);
+
+          setAlertMessage({ text: message.trim(), type: successCount > 0 ? 'success' : 'error' });
+          setShowAlert(true);
+
         } catch (error) {
-          console.error('Error fetching comments for post:', post.url, error);
+          console.error('❌ Critical error during extraction:', error);
+          setExtractionLog(prev => [...prev, `❌ Critical error: ${error.message}`]);
+          setAlertMessage({ text: `Critical error: ${error.message}`, type: 'error' });
+          setShowAlert(true);
+        } finally {
+          setIsLoading(false);
+          // Keep progress modal open for user to review
         }
-      }
-    })
-  );
-
-  setPosts((prevPosts) => [...newPosts, ...prevPosts]);
-  setUrl('');
-
-  let message = '';
-  if (successCount > 0) {
-    message += `${successCount} post(s) saved successfully. `;
-  }
-  if (failureCount > 0) {
-    message += `${failureCount} post(s) failed to save.`;
-  }
-  setAlertMessage({ text: message.trim(), type: successCount > 0 ? 'success' : 'error' });
-  setShowAlert(true);
-  setIsLoading(false);
-};
+      };
 
 
       // Handle selecting a post to view details
@@ -1643,6 +1908,133 @@ const handleCopyLinks = () => {
                       onClick={() => setShowAllUrlsModal(false)}
                     >
                       Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Progress Tracking Modal */}
+          {showProgressModal && (
+            <div
+              className="modal-overlay fixed inset-0 flex items-center justify-center z-50"
+              onClick={(e) => e.stopPropagation()}
+              aria-modal="true"
+              role="dialog"
+            >
+              <div
+                className="modal-content card max-w-4xl w-full mx-4 p-8 relative overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+                style={{ maxHeight: '90vh' }}
+              >
+                <button
+                  className="absolute top-6 right-6 text-secondary hover:text-primary focus:outline-none transition-colors"
+                  onClick={() => setShowProgressModal(false)}
+                  disabled={isLoading}
+                >
+                  <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+
+                <div className="space-y-6">
+                  <h2 className="text-3xl font-bold text-main pr-12">
+                    🚀 Massive Extraction Progress
+                  </h2>
+
+                  {/* Progress Stats */}
+                  {progressStats && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-xl border-2 border-green-200">
+                        <div className="text-sm font-semibold text-green-800 mb-1">Posts Fetched</div>
+                        <div className="text-3xl font-bold text-green-900">
+                          {progressStats.fetchedPosts}/{progressStats.totalPosts || numPostsToSave}
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-xl border-2 border-blue-200">
+                        <div className="text-sm font-semibold text-blue-800 mb-1">Comments</div>
+                        <div className="text-3xl font-bold text-blue-900">
+                          {progressStats.fetchedComments}/{progressStats.totalComments || 0}
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-br from-red-50 to-red-100 p-4 rounded-xl border-2 border-red-200">
+                        <div className="text-sm font-semibold text-red-800 mb-1">Failed</div>
+                        <div className="text-3xl font-bold text-red-900">{progressStats.failedPosts}</div>
+                      </div>
+
+                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-xl border-2 border-purple-200">
+                        <div className="text-sm font-semibold text-purple-800 mb-1">Rate</div>
+                        <div className="text-2xl font-bold text-purple-900">
+                          {((progressStats.fetchedPosts / ((Date.now() - progressStats.startTime) / 1000)) || 0).toFixed(2)} p/s
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Progress Bar */}
+                  {progressStats && (
+                    <div className="w-full">
+                      <div className="flex justify-between text-sm font-semibold text-main mb-2">
+                        <span>Progress</span>
+                        <span>{Math.round((progressStats.fetchedPosts / (progressStats.totalPosts || numPostsToSave)) * 100)}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
+                        <div
+                          className="header-gradient h-full transition-all duration-300 rounded-full"
+                          style={{
+                            width: `${Math.min(100, (progressStats.fetchedPosts / (progressStats.totalPosts || numPostsToSave)) * 100)}%`
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Current Operation */}
+                  {progressStats && progressStats.currentOperation && (
+                    <div className="bg-gradient-to-r from-orange-50 to-yellow-50 p-4 rounded-xl border-2 border-orange-200">
+                      <div className="flex items-center">
+                        {isLoading && (
+                          <div className="spinner w-5 h-5 rounded-full mr-3"></div>
+                        )}
+                        <span className="text-lg font-semibold text-orange-900">
+                          {progressStats.currentOperation}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Extraction Log */}
+                  <div>
+                    <h3 className="text-xl font-bold text-main mb-3">Extraction Log</h3>
+                    <div
+                      className="bg-gray-900 text-green-400 p-4 rounded-xl font-mono text-sm overflow-y-auto"
+                      style={{ maxHeight: '300px' }}
+                    >
+                      {extractionLog.length === 0 ? (
+                        <div className="text-gray-500">Waiting for extraction to start...</div>
+                      ) : (
+                        extractionLog.map((log, index) => (
+                          <div key={index} className="mb-1">
+                            {log}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Action Button */}
+                  <div className="flex justify-end pt-4">
+                    <button
+                      className={`btn-secondary flex items-center px-6 py-3 text-white rounded-xl font-semibold text-sm ${
+                        isLoading ? 'opacity-60 cursor-not-allowed' : ''
+                      }`}
+                      onClick={() => setShowProgressModal(false)}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? 'Extraction in progress...' : 'Close'}
                     </button>
                   </div>
                 </div>
