@@ -5,25 +5,193 @@
   <title>Reddit Link Saver and Extractor</title>
   <link href="https://unpkg.com/tailwindcss@^2.0/dist/tailwind.min.css" rel="stylesheet">
   <style>
+    :root {
+      --primary: #c15f3c;
+      --secondary: #b1ada1;
+      --background: #f4f3ee;
+      --white: #ffffff;
+      --text-dark: #3a3531;
+      --text-light: #6b6560;
+    }
+
+    body {
+      background: linear-gradient(135deg, #f4f3ee 0%, #ebe9e3 100%);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
     .modal-overlay {
-      background: rgba(0, 0, 0, 0.8);
+      background: rgba(177, 173, 161, 0.5);
+      backdrop-filter: blur(8px);
     }
+
     .modal-content {
-      animation: fadeIn 0.3s ease-in-out;
+      animation: fadeInScale 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
+
+    @keyframes fadeInScale {
+      from {
+        opacity: 0;
+        transform: scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .slide-in {
+      animation: slideIn 0.4s ease-out;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #c15f3c 0%, #a84d2a 100%);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px rgba(193, 95, 60, 0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(193, 95, 60, 0.4);
+    }
+
+    .btn-secondary {
+      background: linear-gradient(135deg, #b1ada1 0%, #9a968a 100%);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px rgba(177, 173, 161, 0.3);
+    }
+
+    .btn-secondary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(177, 173, 161, 0.4);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #d9534f 0%, #c9302c 100%);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px rgba(217, 83, 79, 0.3);
+    }
+
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(217, 83, 79, 0.4);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #5cb85c 0%, #4cae4c 100%);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px rgba(92, 184, 92, 0.3);
+    }
+
+    .btn-success:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(92, 184, 92, 0.4);
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(177, 173, 161, 0.15);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .card:hover {
+      box-shadow: 0 8px 32px rgba(177, 173, 161, 0.25);
+      transform: translateY(-2px);
+    }
+
+    .input-field {
+      background: white;
+      border: 2px solid #e8e6e1;
+      color: var(--text-dark);
+      transition: all 0.3s ease;
+    }
+
+    .input-field:focus {
+      border-color: var(--primary);
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(193, 95, 60, 0.1);
+    }
+
+    .checkbox {
+      accent-color: var(--primary);
+    }
+
+    .post-item {
+      border-left: 4px solid var(--primary);
+    }
+
+    .comment-item {
+      background: linear-gradient(135deg, #ffffff 0%, #f9f9f8 100%);
+      border-left: 3px solid var(--secondary);
+    }
+
+    .spinner {
+      border: 3px solid rgba(193, 95, 60, 0.2);
+      border-top-color: var(--primary);
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .header-gradient {
+      background: linear-gradient(135deg, var(--primary) 0%, #a84d2a 100%);
+    }
+
+    .text-primary {
+      color: var(--primary);
+    }
+
+    .text-secondary {
+      color: var(--text-light);
+    }
+
+    .text-main {
+      color: var(--text-dark);
+    }
+
+    .link-preview {
+      transition: transform 0.2s ease;
+    }
+
+    .link-preview:hover {
+      transform: scale(1.02);
+    }
+
+    .badge {
+      background: linear-gradient(135deg, rgba(193, 95, 60, 0.1) 0%, rgba(193, 95, 60, 0.05) 100%);
+      color: var(--primary);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .drop-zone-active {
+      border: 3px dashed var(--primary);
+      background: rgba(193, 95, 60, 0.05);
     }
   </style>
 </head>
-<body class="bg-gray-900 text-gray-300 font-sans">
+<body style="background-color: var(--background);">
   <div id="root" class="flex flex-col items-center justify-center p-6"></div>
 
   <!-- React and ReactDOM (Version 17) -->
   <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
-  
+
   <!-- Babel for JSX compilation -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
@@ -32,19 +200,19 @@
 
     // Recursive Comment Component
     const Comment = ({ comment, depth = 0, showUserNames }) => {
-      const paddingLeft = depth * 20; // Adjust as needed for indentation
+      const paddingLeft = depth * 24;
 
       return (
-        <li style={{ paddingLeft: `${paddingLeft}px` }} className="mt-2">
-          <div className="bg-gray-700 p-4 rounded-lg shadow-md">
-            <div className="flex items-center mb-2">
-              <span className="font-semibold text-white mr-2">
+        <li style={{ paddingLeft: `${paddingLeft}px` }} className="mt-3">
+          <div className="comment-item p-4 rounded-xl shadow-sm">
+            <div className="flex items-start mb-2">
+              <span className="font-bold text-primary mr-2 text-sm">
                 {showUserNames ? comment.author : 'User'}:
               </span>
-              <span className="text-gray-300">{comment.body}</span>
+              <span className="text-main text-sm leading-relaxed">{comment.body}</span>
             </div>
             {comment.replies && comment.replies.length > 0 && (
-              <ul className="list-none space-y-3">
+              <ul className="list-none space-y-3 mt-3">
                 {comment.replies.map((reply, index) => (
                   <Comment key={index} comment={reply} depth={depth + 1} showUserNames={showUserNames} />
                 ))}
@@ -71,7 +239,7 @@
       const [downloadFormat, setDownloadFormat] = useState('txt');
       const [filterStudyPartner, setFilterStudyPartner] = useState(true);
       const [showUserNames, setShowUserNames] = useState(false);
-const [viewMode, setViewMode] = useState('allTogether');  // New state for toggle
+      const [viewMode, setViewMode] = useState('allTogether');
 
       // States for Aggregated URLs Modal
       const [showAllUrlsModal, setShowAllUrlsModal] = useState(false);
@@ -135,10 +303,8 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
           throw new Error('Invalid date format');
         }
         if (endOfDay) {
-          // Set time to 23:59:59.999 UTC
           date.setUTCHours(23, 59, 59, 999);
         } else {
-          // Set time to 00:00:00.000 UTC
           date.setUTCHours(0, 0, 0, 0);
         }
         return Math.floor(date.getTime() / 1000);
@@ -153,14 +319,11 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
 
           const pathname = parsedUrl.pathname.toLowerCase();
 
-          // Check for post URLs
           if (pathname.includes('/comments/')) return 'post';
 
-          // Check for subreddit listings (e.g., /r/subreddit/, /r/subreddit/new/)
           const subredditListingRegex = /^\/r\/[^/]+(\/(new|hot|top|rising|controversial))?\/?$/;
           if (subredditListingRegex.test(pathname)) return 'listing';
 
-          // Check for search URLs
           const searchRegex = /^\/r\/[^/]+\/search\/?$/;
           if (searchRegex.test(pathname)) return 'search';
 
@@ -172,7 +335,7 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
 
       useEffect(() => {
         const dropZone = document.getElementById('drop-zone');
-        let dragCounter = 0; // Counter to track drag events
+        let dragCounter = 0;
 
         const showDropZone = (e) => {
           e.preventDefault();
@@ -190,13 +353,11 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
 
         const preventDefault = (e) => e.preventDefault();
 
-        // Add global events
         window.addEventListener('dragenter', showDropZone);
         window.addEventListener('dragleave', hideDropZone);
         window.addEventListener('dragover', preventDefault);
 
         return () => {
-          // Remove global events when unmounting
           window.removeEventListener('dragenter', showDropZone);
           window.removeEventListener('dragleave', hideDropZone);
           window.removeEventListener('dragover', preventDefault);
@@ -222,7 +383,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
 
       // Helper function to extract URLs from text and associate them with the post title and post URL
       const extractUrls = (text, postTitle, postUrl) => {
-        // Step 1: Extract embedded URLs after ']('
         const embeddedUrlRegex = /\]\((https?:\/\/[^\s)]+|www\.[^\s)]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\)/g;
         const embeddedUrls = [];
         let match;
@@ -230,21 +390,17 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
           embeddedUrls.push(match[1].replace(/[),.:]+$/, ''));
         }
 
-        // Step 2: Remove embedded URLs from the text to prevent duplicate extraction
         const textWithoutEmbedded = text.replace(embeddedUrlRegex, '');
 
-        // Step 3: Extract standalone URLs from the remaining text
         const standaloneUrlRegex = /(https?:\/\/[^\s)]+|www\.[^\s)]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
         const standaloneUrls = [];
         while ((match = standaloneUrlRegex.exec(textWithoutEmbedded)) !== null) {
           standaloneUrls.push(match[1].replace(/[),.:]+$/, ''));
         }
 
-        // Step 4: Combine embedded and standalone URLs, then remove duplicates
         const allUrls = [...embeddedUrls, ...standaloneUrls];
         const uniqueUrls = Array.from(new Set(allUrls));
 
-        // Step 5: Map each URL to an object containing the URL, post title, and post URL
         return uniqueUrls.map((url) => ({
           url,
           postTitle,
@@ -256,11 +412,9 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
       const extractAllUrlsFromPost = (post) => {
         let urls = [];
 
-        // Extract from post content
         const contentUrls = extractUrls(post.content, post.title, post.url);
         urls = urls.concat(contentUrls);
 
-        // Extract from comments and replies recursively
         const extractFromComments = (comments) => {
           comments.forEach((comment) => {
             const commentUrls = extractUrls(comment.body, post.title, post.url);
@@ -275,7 +429,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
           extractFromComments(post.comments);
         }
 
-        // Remove duplicate URLs based on the URL string
         const uniqueUrls = Array.from(new Set(urls.map((item) => item.url))).map((url) => {
           return urls.find((item) => item.url === url);
         });
@@ -288,11 +441,9 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
         setIsExtractingUrls(true);
         let aggregatedUrls = [];
 
-        // Ensure all comments are fetched before extracting URLs
         await Promise.all(
           posts.map(async (post) => {
             if (!post.comments || post.comments.length === 0) {
-              // Fetch comments if they are not already loaded
               try {
                 const comments = await fetchPostComments(post.url);
                 post.comments = comments;
@@ -305,7 +456,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
           })
         );
 
-        // Remove duplicate URLs
         aggregatedUrls = Array.from(new Set(aggregatedUrls.map((item) => item.url))).map((url) => {
           return aggregatedUrls.find((item) => item.url === url);
         });
@@ -324,7 +474,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
         useEffect(() => {
           const fetchMetadata = async () => {
             try {
-              // Replace 'YOUR_API_KEY' with your actual API key from Microlink.io or use another metadata service
               const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}&meta=1&fallback=1&embed=1`;
 
               const response = await fetch(apiUrl);
@@ -362,7 +511,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
           fetchMetadata();
         }, [url]);
 
-        // Add protocol if missing
         const formatUrl = (url) => {
           return url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
         };
@@ -395,13 +543,13 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
         };
 
         return (
-          <div className="mb-2 border rounded-lg overflow-hidden max-w-xs bg-white shadow">
-            <a href={formatUrl(url)} target="_blank" rel="noopener noreferrer" className="flex items-center p-2">
-              <img src={metadata?.image || 'https://via.placeholder.com/64'} alt="Site Image" className="w-6 h-6 mr-2" />
-              <div>
-                <h3 className="text-sm font-semibold text-blue-500">{metadata?.title || 'Loading...'}</h3>
-                {metadata?.description && <p className="text-xs text-gray-600">{metadata.description}</p>}
-                <p className="text-xs text-gray-600">{metadata?.siteName}</p>
+          <div className="mb-3 border-2 border-gray-200 rounded-xl overflow-hidden max-w-md bg-white shadow-sm link-preview">
+            <a href={formatUrl(url)} target="_blank" rel="noopener noreferrer" className="flex items-center p-3 hover:bg-gray-50 transition-colors">
+              <img src={metadata?.image || 'https://via.placeholder.com/64'} alt="Site Image" className="w-12 h-12 mr-3 rounded-lg object-cover" />
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-primary truncate">{metadata?.title || 'Loading...'}</h3>
+                {metadata?.description && <p className="text-xs text-secondary mt-1 line-clamp-2">{metadata.description}</p>}
+                <p className="text-xs text-secondary mt-1 font-medium">{metadata?.siteName}</p>
               </div>
             </a>
           </div>
@@ -411,7 +559,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
       // Fetch post data and comments from Reddit API
       const fetchPostData = async (postUrl) => {
         try {
-          // Extract the Reddit post ID from the URL
           const pathSegments = new URL(postUrl).pathname.split('/');
           const commentsIndex = pathSegments.indexOf('comments');
           if (commentsIndex === -1 || commentsIndex + 1 >= pathSegments.length) {
@@ -422,7 +569,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
             throw new Error('Invalid Reddit post URL.');
           }
 
-          // Fetch post data and comments
           const response = await fetch(`${postUrl}.json`);
           if (!response.ok) {
             throw new Error('Failed to fetch the Reddit post.');
@@ -430,13 +576,11 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
 
           const data = await response.json();
 
-          // Extract post data
           const post = data[0]?.data?.children[0]?.data;
           if (!post) {
             throw new Error('Unable to extract post data.');
           }
 
-          // Extract comments
           const comments = extractComments(data[1]?.data?.children || []);
 
           return {
@@ -446,7 +590,7 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
             subreddit: post.subreddit || 'unknown',
             created_utc: post.created_utc || null,
             num_comments: post.num_comments || 0,
-            author: post.author || '[deleted]', // Added author field
+            author: post.author || '[deleted]',
             comments,
           };
         } catch (err) {
@@ -458,7 +602,7 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
       const extractComments = (commentsData) => {
         return commentsData
           .map((comment) => {
-            if (comment.kind !== 't1') return null; // Ensure it's a comment
+            if (comment.kind !== 't1') return null;
             const { author, body, replies } = comment.data;
             return {
               author: author || '[deleted]',
@@ -475,7 +619,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
       // Fetch comments for a post when needed
       const fetchPostComments = async (postUrl) => {
         try {
-          // Fetch comments
           const response = await fetch(`${postUrl}.json`);
           if (!response.ok) {
             throw new Error('Failed to fetch the Reddit comments.');
@@ -483,7 +626,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
 
           const data = await response.json();
 
-          // Extract comments
           const comments = extractComments(data[1]?.data?.children || []);
 
           return comments;
@@ -497,7 +639,7 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
         try {
           const parsedUrl = new URL(searchUrl);
           const queryParam = parsedUrl.searchParams.get('q') || '';
-          const subreddit = parsedUrl.pathname.split('/')[2]; // Extract subreddit from URL
+          const subreddit = parsedUrl.pathname.split('/')[2];
           const sort = parsedUrl.searchParams.get('sort') || 'relevance';
 
           const startTimestamp = startDate ? getUnixTimestamp(startDate) : null;
@@ -524,7 +666,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
             q = '';
           }
 
-          // Build the API URL
           const apiUrl = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(
             q
           )}&restrict_sr=on&sort=${sort}&syntax=cloudsearch&limit=100`;
@@ -552,12 +693,11 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
                 subreddit: post.data.subreddit || 'unknown',
                 created_utc: post.data.created_utc || null,
                 num_comments: post.data.num_comments || 0,
-                author: post.data.author || '[deleted]', // Added author field
-                comments: [], // Comments will be fetched later
+                author: post.data.author || '[deleted]',
+                comments: [],
               };
             });
 
-          // Apply filters and limit to numPostsToSave
           fetchedPosts = fetchedPosts.slice(0, numPostsToSave);
 
           return fetchedPosts;
@@ -578,7 +718,7 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
           }
 
           const subreddit = pathSegments[1];
-          let listingType = pathSegments[2] || 'hot'; // Default to 'hot' if not specified
+          let listingType = pathSegments[2] || 'hot';
 
           const allowedListingTypes = ['hot', 'new', 'top', 'rising', 'controversial'];
           if (!allowedListingTypes.includes(listingType)) {
@@ -594,7 +734,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
           let after = null;
 
           while (fetchedPosts.length < numPostsToSave) {
-            // Build the API URL
             let apiUrl = `https://www.reddit.com/r/${subreddit}/${listingType}.json?limit=100`;
             if (after) {
               apiUrl += `&after=${after}`;
@@ -628,8 +767,8 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
                   subreddit: post.data.subreddit || 'unknown',
                   created_utc: post.data.created_utc || null,
                   num_comments: post.data.num_comments || 0,
-                  author: post.data.author || '[deleted]', // Added author field
-                  comments: [], // Comments will be fetched later
+                  author: post.data.author || '[deleted]',
+                  comments: [],
                 };
               });
 
@@ -637,11 +776,10 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
 
             after = data.data.after;
             if (!after) {
-              break; // No more pages
+              break;
             }
           }
 
-          // Slice to the desired number of posts
           fetchedPosts = fetchedPosts.slice(0, numPostsToSave);
 
           console.log(`Total posts fetched from listing: ${fetchedPosts.length}`);
@@ -664,7 +802,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
     return;
   }
 
-  // Split the input by newlines or commas, trim each entry, and remove duplicates
   const inputs = Array.from(
     new Set(
       url.split(/[\n,]+/)
@@ -735,7 +872,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
     if (successCount >= numPostsToSave) break;
   }
 
-  // Auto-fetch comments for each new post so they load without needing to click
   await Promise.all(
     newPosts.map(async (post) => {
       if (!post.comments || post.comments.length === 0) {
@@ -748,7 +884,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
     })
   );
 
-  // Update posts state once with posts that now include their comments
   setPosts((prevPosts) => [...newPosts, ...prevPosts]);
   setUrl('');
 
@@ -774,7 +909,6 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
         setSelectedPost(post);
 
         if (!post.comments || post.comments.length === 0) {
-          // Fetch comments
           try {
             const comments = await fetchPostComments(post.url);
             setPosts((prevPosts) => {
@@ -844,7 +978,7 @@ const [viewMode, setViewMode] = useState('allTogether');  // New state for toggl
       const formatCommentsHtml = (comments, depth) => {
         return comments
           .map((comment) => {
-            const indentation = depth * 20; // Adjust as needed
+            const indentation = depth * 20;
             return `<div style="margin-left:${indentation}px;">
         <p><strong>${showUserNames ? comment.author : 'User'}:</strong> ${comment.body}</p>
         ${comment.replies && comment.replies.length > 0 ? formatCommentsHtml(comment.replies, depth + 1) : ''}
@@ -857,8 +991,7 @@ const handleCopyLinks = () => {
   if (allExtractedUrls.length === 0) return;
 
   const urls = allExtractedUrls.map(item => item.url).join('\n');
-  
-  // Create a temporary text area to hold the URLs
+
   const textArea = document.createElement('textarea');
   textArea.value = urls;
   document.body.appendChild(textArea);
@@ -866,7 +999,6 @@ const handleCopyLinks = () => {
   document.execCommand('copy');
   document.body.removeChild(textArea);
 
-  // Show success alert
   setAlertMessage({ text: 'All links copied to clipboard!', type: 'success' });
   setShowAlert(true);
 };
@@ -880,7 +1012,6 @@ const handleCopyLinks = () => {
           return;
         }
 
-        // Ensure all comments are fetched
         setIsLoading(true);
         try {
           await Promise.all(
@@ -977,13 +1108,12 @@ const handleCopyLinks = () => {
           if (hidePostsWithoutComments && post.num_comments === 0) return false;
 
           if (filterStudyPartner) {
-            // Filter to exclude posts containing specific phrases in the title or content
             const normalizedTitle = (post.title || '').toLowerCase();
             const normalizedContent = (post.content || '').toLowerCase();
 
             for (const phrase of exclusionPhrases) {
               if (normalizedTitle.includes(phrase) || normalizedContent.includes(phrase)) {
-                return false; // Exclude this post
+                return false;
               }
             }
           }
@@ -993,19 +1123,29 @@ const handleCopyLinks = () => {
       }, [posts, startDate, endDate, hidePostsWithoutComments, filterStudyPartner]);
 
       return (
-        <div className="flex flex-col items-center justify-center p-6 w-full min-h-screen bg-gray-900 text-white">
+        <div className="flex flex-col items-center justify-center p-6 w-full min-h-screen" style={{backgroundColor: 'var(--background)'}}>
+          {/* Header */}
+          <div className="w-full max-w-6xl mb-8 slide-in">
+            <div className="header-gradient p-8 rounded-2xl shadow-xl text-white text-center">
+              <h1 className="text-4xl font-bold mb-2">Reddit Scraper</h1>
+              <p className="text-lg opacity-90">Extract, Save & Analyze Reddit Posts</p>
+            </div>
+          </div>
+
           {/* Alert Message */}
           {showAlert && (
             <div
-              className={`w-full mb-6 px-4 py-3 rounded-lg shadow-lg flex items-center justify-between ${
-                alertMessage.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+              className={`w-full max-w-6xl mb-6 px-6 py-4 rounded-xl shadow-lg flex items-center justify-between slide-in ${
+                alertMessage.type === 'success' ? 'bg-green-50 border-2 border-green-500' : 'bg-red-50 border-2 border-red-500'
               }`}
               role="alert"
             >
-              <span className="font-semibold">{alertMessage.text}</span>
+              <span className={`font-semibold ${alertMessage.type === 'success' ? 'text-green-800' : 'text-red-800'}`}>
+                {alertMessage.text}
+              </span>
               <button
                 onClick={() => setShowAlert(false)}
-                className="text-white hover:text-gray-300 focus:outline-none"
+                className={`${alertMessage.type === 'success' ? 'text-green-600 hover:text-green-800' : 'text-red-600 hover:text-red-800'} focus:outline-none transition-colors`}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -1022,441 +1162,380 @@ const handleCopyLinks = () => {
 
           {/* Drop Zone */}
           <div
-            className="drop-zone fixed inset-0 bg-gray-900 bg-opacity-75 text-white flex items-center justify-center z-50 hidden"
+            className="drop-zone fixed inset-0 flex items-center justify-center z-50 hidden"
             id="drop-zone"
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
+            style={{background: 'rgba(193, 95, 60, 0.95)', backdropFilter: 'blur(10px)'}}
           >
-            <p className="text-xl font-bold">Drop URLs here</p>
-          </div>
-
-          {/* Input Form */}
-          <div className="w-full max-w-lg bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
-            <textarea
-              className="w-full p-3 mb-4 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:border-orange-500 text-white"
-              placeholder="Paste Reddit post URLs, subreddit listing URLs, or search queries"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              rows={4}
-            ></textarea>
-
-            {/* Number of Posts to Save */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-300">Number of Posts to Save</label>
-              <input
-                type="number"
-                min="1"
-                max="1000"
-                className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:border-orange-500 text-white"
-                value={numPostsToSave}
-                onChange={(e) => setNumPostsToSave(parseInt(e.target.value) || 100)}
-              />
-            </div>
-
-            {/* Date Filters */}
-            <div className="flex space-x-4 mb-4">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-300">Start Date</label>
-                <input
-                  type="date"
-                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:border-orange-500 text-white"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-300">End Date</label>
-                <input
-                  type="date"
-                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:border-orange-500 text-white"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Hide Posts Without Comments Checkbox */}
-            <div className="mb-4">
-              <label className="inline-flex items-center">
-                <input
-                  type="checkbox"
-                  className="form-checkbox h-5 w-5 text-orange-600"
-                  checked={hidePostsWithoutComments}
-                  onChange={(e) => setHidePostsWithoutComments(e.target.checked)}
-                />
-                <span className="ml-2 text-gray-300">Hide Posts Without Comments</span>
-              </label>
-            </div>
-
-            {/* Filter Study Partner Posts Checkbox */}
-            <div className="mb-4">
-              <label className="inline-flex items-center">
-                <input
-                  type="checkbox"
-                  className="form-checkbox h-5 w-5 text-orange-600"
-                  checked={filterStudyPartner}
-                  onChange={(e) => setFilterStudyPartner(e.target.checked)}
-                />
-                <span className="ml-2 text-gray-300">Filter Study Partner Posts</span>
-              </label>
-            </div>
-
-            {/* Show User Names Checkbox */}
-            <div className="mb-4">
-              <label className="inline-flex items-center">
-                <input
-                  type="checkbox"
-                  className="form-checkbox h-5 w-5 text-orange-600"
-                  checked={showUserNames}
-                  onChange={(e) => setShowUserNames(e.target.checked)}
-                />
-                <span className="ml-2 text-gray-300">Show User Names</span>
-              </label>
-            </div>
-
-            <button
-              onClick={handleSaveLink}
-              className={`w-full flex items-center justify-center px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors ${
-                isLoading ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <svg
-                    className="animate-spin h-5 w-5 mr-2 text-white"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8v8H4z"
-                    ></path>
-                  </svg>
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <svg
-                    className="h-5 w-5 mr-2"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    {/* Corrected SVG Path */}
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Save Links
-                </>
-              )}
-            </button>
-
-            {/* Action Buttons */}
-            <div className="mt-4 space-y-3">
-              <button
-                className="w-full flex items-center justify-center px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md transition-colors"
-                onClick={handleDownloadPosts}
-                disabled={filteredPosts.length === 0}
-              >
-                <svg
-                  className="h-5 w-5 mr-2"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12v9m0 0l-3-3m3 3l3-3" />
-                </svg>
-                Download Posts
-              </button>
-              <button
-                className={`w-full flex items-center justify-center px-4 py-3 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg shadow-md transition-colors ${
-                  isExtractingUrls ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                onClick={extractAllUrls}
-                disabled={posts.length === 0 || isExtractingUrls}
-              >
-                {isExtractingUrls ? (
-                  <>
-                    <svg
-                      className="animate-spin h-5 w-5 mr-2 text-white"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8v8H4z"
-                      ></path>
-                    </svg>
-                    Extracting URLs...
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      className="h-5 w-5 mr-2"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      {/* URL Icon */}
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                    </svg>
-                    Show All URLs
-                  </>
-                )}
-              </button>
-              {posts.length > 0 && (
-                <button
-                  className="w-full flex items-center justify-center px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-md transition-colors"
-                  onClick={deleteAllPosts}
-                >
-                  <svg
-                    className="h-5 w-5 mr-2"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1 1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  Delete All Posts
-                </button>
-              )}
-            </div>
-          </div>
-{/* View Mode Toggle */}
-<div className="mb-4 flex justify-center space-x-4">
-  <button
-    onClick={() => setViewMode('windows')}
-    className={`px-4 py-2 rounded-lg ${viewMode === 'windows' ? 'bg-blue-600' : 'bg-gray-600'}`}
-  >
-    Windows View
-  </button>
-  <button
-    onClick={() => setViewMode('allTogether')}
-    className={`px-4 py-2 rounded-lg ${viewMode === 'allTogether' ? 'bg-blue-600' : 'bg-gray-600'}`}
-  >
-    All Together View
-  </button>
-</div>
-
-          {/* Saved Posts List */}
-<div className="w-full max-w-2xl bg-gray-800 rounded-lg shadow-lg p-6 overflow-y-auto" style={{ maxHeight: '500px' }}>
-  {filteredPosts.length === 0 ? (
-    <p className="text-center text-gray-400">No posts saved yet.</p>
-  ) : viewMode === 'windows' ? (
-    // Render each post in its own window
-    <div className="space-y-4">
-      {filteredPosts.map((post, index) => (
-        <div key={post.url} className="bg-gray-700 p-6 rounded-lg shadow-md hover:bg-gray-600 transition-all">
-          <button
-            className="flex items-center text-left w-full text-white hover:text-gray-300 focus:outline-none"
-            onClick={() => handleSelectPost(post)}
-          >
-            <svg className="h-5 w-5 mr-2 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M12.293 5.293a1 1 0 011.414 0L18 9.586a2 2 0 010 2.828l-4.293 4.293a1 1 0 01-1.414-1.414L14.586 13H7a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" />
-            </svg>
-            <div>
-              <span className="font-semibold">{post.title}</span>
-              <div className="text-sm text-gray-400">
-                {post.created_utc ? new Date(post.created_utc * 1000).toLocaleString() : 'Unknown date'}
-              </div>
-              <div className="text-sm text-gray-400">
-                {post.num_comments} comment{post.num_comments !== 1 ? 's' : ''}
-              </div>
-            </div>
-          </button>
-        </div>
-      ))}
-    </div>
-  ) : (
-    // Render all posts together in the same block with better layout
-    <ul className="space-y-6">
-      {filteredPosts.map((post, index) => (
-        <li key={post.url} className="flex items-start bg-gray-700 p-6 rounded-lg shadow-md hover:bg-gray-600 transition-all">
-          <div className="flex-1">
-            <button
-              className="flex items-center text-left w-full text-white hover:text-gray-300 focus:outline-none"
-              onClick={() => handleSelectPost(post)}
-            >
-              <svg
-                className="h-5 w-5 mr-2 text-blue-400"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path d="M12.293 5.293a1 1 0 011.414 0L18 9.586a2 2 0 010 2.828l-4.293 4.293a1 1 0 01-1.414-1.414L14.586 13H7a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" />
+            <div className="text-center">
+              <svg className="w-24 h-24 mx-auto mb-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
-              <div>
-                <span className="font-semibold">{post.title}</span>
-                <div className="text-sm text-gray-400">
-                  {post.created_utc ? new Date(post.created_utc * 1000).toLocaleString() : 'Unknown date'}
-                </div>
-                <div className="text-sm text-gray-400">
-                  {post.num_comments} comment{post.num_comments !== 1 ? 's' : ''}
-                </div>
-              </div>
-            </button>
+              <p className="text-3xl font-bold text-white">Drop URLs Here</p>
+            </div>
           </div>
-        </li>
-      ))}
-    </ul>
-  )}
-</div>
 
-{viewMode === 'allTogether' && (
-  <div className="max-w-3xl mx-auto">
-    <ul className="space-y-6">
-      {filteredPosts.map((post, index) => (
-        <li
-          key={post.url}
-          className="bg-gray-700 p-6 rounded-lg shadow-md hover:bg-gray-600 transition-all"
-        >
-          <div className="text-white">
-            <h3 className="text-2xl font-bold">
-              Post {index + 1}: {post.title}
-            </h3>
-            <div className="text-sm text-gray-400">
-              {post.created_utc
-                ? new Date(post.created_utc * 1000).toLocaleString()
-                : 'Unknown date'}
-            </div>
-            <div className="text-sm text-gray-400">
-              {post.num_comments} comment{post.num_comments !== 1 ? 's' : ''}
-            </div>
-            {showUserNames && (
-              <div className="text-sm text-gray-400">
-                Author: {post.author}
-              </div>
-            )}
-            <p className="text-gray-300 whitespace-pre-wrap mt-2">
-              {post.content}
-            </p>
-            {post.comments && post.comments.length > 0 && (
-              <div className="mt-4">
-                <h4 className="text-xl font-semibold mb-2">Comments:</h4>
-                <ul className="list-none space-y-3">
-                  {post.comments.map((comment, cIndex) => (
-                    <Comment
-                      key={cIndex}
-                      comment={comment}
-                      showUserNames={showUserNames}
+          {/* Main Content Grid */}
+          <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Input Form - Left Column */}
+            <div className="lg:col-span-1">
+              <div className="card p-6 slide-in">
+                <h2 className="text-2xl font-bold text-main mb-4">Add Posts</h2>
+                <textarea
+                  className="input-field w-full p-4 mb-4 rounded-xl text-sm resize-none"
+                  placeholder="Paste Reddit URLs, subreddit listing URLs, or search queries..."
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  rows={5}
+                ></textarea>
+
+                {/* Number of Posts to Save */}
+                <div className="mb-4">
+                  <label className="block text-sm font-semibold text-main mb-2">Posts to Save</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    className="input-field w-full p-3 rounded-xl text-sm"
+                    value={numPostsToSave}
+                    onChange={(e) => setNumPostsToSave(parseInt(e.target.value) || 100)}
+                  />
+                </div>
+
+                {/* Date Filters */}
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-main mb-2">Start Date</label>
+                    <input
+                      type="date"
+                      className="input-field w-full p-3 rounded-xl text-sm"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
                     />
-                  ))}
-                </ul>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-main mb-2">End Date</label>
+                    <input
+                      type="date"
+                      className="input-field w-full p-3 rounded-xl text-sm"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Checkboxes */}
+                <div className="space-y-3 mb-6">
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="checkbox w-5 h-5 rounded"
+                      checked={hidePostsWithoutComments}
+                      onChange={(e) => setHidePostsWithoutComments(e.target.checked)}
+                    />
+                    <span className="ml-3 text-sm text-main font-medium">Hide posts without comments</span>
+                  </label>
+
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="checkbox w-5 h-5 rounded"
+                      checked={filterStudyPartner}
+                      onChange={(e) => setFilterStudyPartner(e.target.checked)}
+                    />
+                    <span className="ml-3 text-sm text-main font-medium">Filter study partner posts</span>
+                  </label>
+
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="checkbox w-5 h-5 rounded"
+                      checked={showUserNames}
+                      onChange={(e) => setShowUserNames(e.target.checked)}
+                    />
+                    <span className="ml-3 text-sm text-main font-medium">Show user names</span>
+                  </label>
+                </div>
+
+                <button
+                  onClick={handleSaveLink}
+                  className={`btn-primary w-full flex items-center justify-center px-6 py-4 text-white rounded-xl font-semibold text-sm ${
+                    isLoading ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="spinner w-5 h-5 rounded-full mr-3"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Save Posts
+                    </>
+                  )}
+                </button>
+
+                {/* Action Buttons */}
+                <div className="mt-4 space-y-3">
+                  <button
+                    className="btn-success w-full flex items-center justify-center px-6 py-3 text-white rounded-xl font-semibold text-sm"
+                    onClick={handleDownloadPosts}
+                    disabled={filteredPosts.length === 0}
+                  >
+                    <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12v9m0 0l-3-3m3 3l3-3" />
+                    </svg>
+                    Download Posts
+                  </button>
+
+                  <button
+                    className={`btn-secondary w-full flex items-center justify-center px-6 py-3 text-white rounded-xl font-semibold text-sm ${
+                      isExtractingUrls ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
+                    onClick={extractAllUrls}
+                    disabled={posts.length === 0 || isExtractingUrls}
+                  >
+                    {isExtractingUrls ? (
+                      <>
+                        <div className="spinner w-5 h-5 rounded-full mr-3"></div>
+                        Extracting...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                        Show All URLs
+                      </>
+                    )}
+                  </button>
+
+                  {posts.length > 0 && (
+                    <button
+                      className="btn-danger w-full flex items-center justify-center px-6 py-3 text-white rounded-xl font-semibold text-sm"
+                      onClick={deleteAllPosts}
+                    >
+                      <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1 1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete All Posts
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
+
+            {/* Posts List - Right Column */}
+            <div className="lg:col-span-2">
+              <div className="card p-6 slide-in">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-main">
+                    Saved Posts
+                    {filteredPosts.length > 0 && (
+                      <span className="badge ml-3">{filteredPosts.length}</span>
+                    )}
+                  </h2>
+
+                  {/* View Mode Toggle */}
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => setViewMode('windows')}
+                      className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
+                        viewMode === 'windows'
+                          ? 'btn-primary text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      Windows
+                    </button>
+                    <button
+                      onClick={() => setViewMode('allTogether')}
+                      className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
+                        viewMode === 'allTogether'
+                          ? 'btn-primary text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      All Together
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-y-auto" style={{ maxHeight: '700px' }}>
+                  {filteredPosts.length === 0 ? (
+                    <div className="text-center py-12">
+                      <svg className="w-20 h-20 mx-auto text-secondary mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <p className="text-secondary text-lg font-medium">No posts saved yet</p>
+                      <p className="text-secondary text-sm mt-2">Add some Reddit URLs to get started!</p>
+                    </div>
+                  ) : viewMode === 'windows' ? (
+                    <div className="space-y-4">
+                      {filteredPosts.map((post, index) => (
+                        <div key={post.url} className="post-item card p-5 cursor-pointer" onClick={() => handleSelectPost(post)}>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h3 className="font-bold text-main text-lg mb-2 hover:text-primary transition-colors">
+                                {post.title}
+                              </h3>
+                              <div className="flex items-center space-x-4 text-sm text-secondary">
+                                <span className="flex items-center">
+                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                                  </svg>
+                                  {post.num_comments} comments
+                                </span>
+                                <span className="flex items-center">
+                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  {post.created_utc ? new Date(post.created_utc * 1000).toLocaleDateString() : 'Unknown'}
+                                </span>
+                              </div>
+                            </div>
+                            <svg className="w-6 h-6 text-primary flex-shrink-0 ml-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {filteredPosts.map((post, index) => (
+                        <div key={post.url} className="post-item card p-6">
+                          <div className="mb-4">
+                            <h3 className="text-2xl font-bold text-main mb-3">
+                              Post {index + 1}: {post.title}
+                            </h3>
+                            <div className="flex items-center space-x-4 text-sm text-secondary mb-3">
+                              <span className="flex items-center">
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                                </svg>
+                                {post.num_comments} comments
+                              </span>
+                              <span className="flex items-center">
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                {post.created_utc ? new Date(post.created_utc * 1000).toLocaleString() : 'Unknown date'}
+                              </span>
+                              {showUserNames && (
+                                <span className="font-semibold text-primary">
+                                  by {post.author}
+                                </span>
+                              )}
+                            </div>
+                            <a href={post.url} target="_blank" rel="noopener noreferrer" className="text-primary text-sm font-semibold hover:underline">
+                              View on Reddit →
+                            </a>
+                          </div>
+
+                          <div className="bg-gray-50 p-4 rounded-xl mb-4">
+                            <p className="text-main whitespace-pre-wrap leading-relaxed">
+                              {post.content}
+                            </p>
+                          </div>
+
+                          {post.comments && post.comments.length > 0 && (
+                            <div>
+                              <h4 className="text-xl font-bold text-main mb-3">Comments</h4>
+                              <ul className="list-none space-y-3">
+                                {post.comments.map((comment, cIndex) => (
+                                  <Comment
+                                    key={cIndex}
+                                    comment={comment}
+                                    showUserNames={showUserNames}
+                                  />
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        </li>
-      ))}
-    </ul>
-  </div>
-)}
 
           {/* Post Details Modal */}
           {selectedPost && (
             <div
-              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60 transition-opacity duration-300"
+              className="modal-overlay fixed inset-0 flex items-center justify-center z-50"
               onClick={closeModal}
               aria-modal="true"
               role="dialog"
-              aria-labelledby="modal-title"
-              style={{ zIndex: 60 }} // Added inline z-index
             >
               <div
-                className="bg-gray-800 dark:bg-gray-900 rounded-lg shadow-2xl max-w-3xl w-full mx-4 p-8 relative transform transition-transform duration-300 overflow-y-auto"
+                className="modal-content card max-w-4xl w-full mx-4 p-8 relative overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
                 style={{ maxHeight: '90vh' }}
               >
                 {/* Close Button */}
                 <button
-                  className="absolute top-6 right-6 text-gray-400 hover:text-gray-200 focus:outline-none transition-colors"
+                  className="absolute top-6 right-6 text-secondary hover:text-primary focus:outline-none transition-colors"
                   onClick={closeModal}
-                  aria-label="Close modal"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
 
-                {/* Modal Content */}
                 <div className="space-y-6">
-                  {/* Title */}
-                  <h2 id="modal-title" className="text-4xl font-bold text-white text-center">
+                  <h2 className="text-3xl font-bold text-main pr-12">
                     {selectedPost.title}
                   </h2>
 
-                  {/* Post Date */}
-                  <div className="text-center text-gray-400">
-                    {selectedPost.created_utc
-                      ? new Date(selectedPost.created_utc * 1000).toLocaleString()
-                      : 'Unknown date'}
+                  <div className="flex items-center space-x-4 text-sm text-secondary">
+                    <span className="flex items-center">
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      {selectedPost.created_utc ? new Date(selectedPost.created_utc * 1000).toLocaleString() : 'Unknown date'}
+                    </span>
+                    {showUserNames && (
+                      <span className="font-semibold text-primary">
+                        by {selectedPost.author}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Post Author */}
-                  {showUserNames && (
-                    <div className="text-center text-gray-400">
-                      Author: {selectedPost.author}
-                    </div>
-                  )}
-
-                  {/* Post URL */}
-                  <div className="flex items-center justify-center space-x-3">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-6 w-6 text-blue-500"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M12.293 5.293a1 1 0 011.414 0L18 9.586a2 2 0 010 2.828l-4.293 4.293a1 1 0 01-1.414-1.414L14.586 13H7a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" />
+                  <a
+                    href={selectedPost.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary font-semibold hover:underline inline-flex items-center"
+                  >
+                    View on Reddit
+                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
-                    <a
-                      href={selectedPost.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-400 underline break-all hover:text-blue-600 transition-colors text-lg"
-                    >
-                      {selectedPost.url}
-                    </a>
-                  </div>
+                  </a>
 
-                  {/* Post Content */}
-                  <div className="bg-gray-700 p-6 rounded-lg">
-                    <h3 className="text-2xl font-semibold text-white mb-3">Content</h3>
-                    <p className="text-gray-300 whitespace-pre-wrap">
+                  <div className="bg-gray-50 p-6 rounded-xl">
+                    <h3 className="text-xl font-bold text-main mb-3">Content</h3>
+                    <p className="text-main whitespace-pre-wrap leading-relaxed">
                       {selectedPost.content}
                     </p>
                   </div>
 
-                  {/* Comments Section */}
-                  <div className="bg-gray-700 p-6 rounded-lg">
-                    <h3 className="text-2xl font-semibold text-white mb-3">Comments</h3>
+                  <div className="bg-gray-50 p-6 rounded-xl">
+                    <h3 className="text-xl font-bold text-main mb-4">
+                      Comments ({selectedPost.comments.length})
+                    </h3>
                     {selectedPost.comments.length === 0 ? (
-                      <p className="text-gray-400">No comments available.</p>
+                      <p className="text-secondary">No comments available.</p>
                     ) : (
-                      <div className="max-h-80 overflow-y-auto">
+                      <div className="max-h-96 overflow-y-auto">
                         <ul className="list-none space-y-3">
                           {selectedPost.comments.map((comment, cIndex) => (
                             <Comment key={cIndex} comment={comment} showUserNames={showUserNames} />
@@ -1466,36 +1545,20 @@ const handleCopyLinks = () => {
                     )}
                   </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex justify-end space-x-6">
+                  <div className="flex justify-end space-x-4 pt-4">
                     <button
-                      className="flex items-center px-5 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow transition-colors focus:outline-none"
+                      className="btn-danger flex items-center px-6 py-3 text-white rounded-xl font-semibold text-sm"
                       onClick={() => deletePost(selectedPost)}
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-6 w-6 mr-3"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
+                      <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1 1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                       Delete Post
                     </button>
                     <button
-                      className="flex items-center px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition-colors focus:outline-none"
+                      className="btn-secondary flex items-center px-6 py-3 text-white rounded-xl font-semibold text-sm"
                       onClick={closeModal}
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-6 w-6 mr-3"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
                       Close
                     </button>
                   </div>
@@ -1507,65 +1570,64 @@ const handleCopyLinks = () => {
           {/* Aggregated URLs Modal */}
           {showAllUrlsModal && (
             <div
-              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300"
+              className="modal-overlay fixed inset-0 flex items-center justify-center z-50"
               onClick={() => setShowAllUrlsModal(false)}
               aria-modal="true"
               role="dialog"
-              aria-labelledby="aggregated-urls-modal-title"
             >
               <div
-                className="bg-gray-800 dark:bg-gray-900 rounded-lg shadow-2xl max-w-3xl w-full mx-4 p-8 relative transform transition-transform duration-300 overflow-y-auto"
+                className="modal-content card max-w-4xl w-full mx-4 p-8 relative overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
                 style={{ maxHeight: '90vh' }}
               >
-                {/* Close Button */}
                 <button
-                  className="absolute top-6 right-6 text-gray-400 hover:text-gray-200 focus:outline-none transition-colors"
+                  className="absolute top-6 right-6 text-secondary hover:text-primary focus:outline-none transition-colors"
                   onClick={() => setShowAllUrlsModal(false)}
-                  aria-label="Close URLs modal"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
 
-                {/* Modal Content */}
                 <div className="space-y-6">
-                  {/* Title */}
-                  <h2 id="aggregated-urls-modal-title" className="text-3xl font-bold text-white text-center">
+                  <h2 className="text-3xl font-bold text-main pr-12">
                     All Extracted URLs
+                    {allExtractedUrls.length > 0 && (
+                      <span className="badge ml-3">{allExtractedUrls.length}</span>
+                    )}
                   </h2>
-<button
-  className="w-full flex items-center justify-center px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors"
-  onClick={handleCopyLinks}
-  disabled={allExtractedUrls.length === 0}
->
-  <svg
-    className="h-5 w-5 mr-2"
-    xmlns="http://www.w3.org/2000/svg"
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-  >
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7 7-7 7" />
-  </svg>
-  Copy All Links
-</button>
 
-                  {/* URLs List */}
+                  <button
+                    className="btn-primary w-full flex items-center justify-center px-6 py-3 text-white rounded-xl font-semibold text-sm"
+                    onClick={handleCopyLinks}
+                    disabled={allExtractedUrls.length === 0}
+                  >
+                    <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                    </svg>
+                    Copy All Links
+                  </button>
+
                   {allExtractedUrls.length === 0 ? (
-                    <p className="text-center text-gray-400">No URLs found in saved posts.</p>
+                    <div className="text-center py-12">
+                      <svg className="w-20 h-20 mx-auto text-secondary mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                      </svg>
+                      <p className="text-secondary text-lg font-medium">No URLs found</p>
+                    </div>
                   ) : (
                     <ul className="space-y-4">
                       {allExtractedUrls.map((item, index) => (
-                        <li key={index} className="bg-gray-700 p-4 rounded-lg shadow-md">
+                        <li key={index} className="bg-gray-50 p-4 rounded-xl">
                           <LinkPreview url={item.url} />
-                          {/* Clickable "Found in: ..." */}
-                          <p className="text-sm text-gray-400 mt-1">
-                            Found in: 
+                          <p className="text-sm text-secondary mt-2">
+                            Found in:
                             <button
-                              className="font-semibold text-blue-500 underline hover:text-blue-300 ml-1"
-                              onClick={() => handleSelectPostByUrl(item.postUrl)}
+                              className="font-semibold text-primary hover:underline ml-1"
+                              onClick={() => {
+                                setShowAllUrlsModal(false);
+                                handleSelectPostByUrl(item.postUrl);
+                              }}
                             >
                               {item.postTitle}
                             </button>
@@ -1575,21 +1637,11 @@ const handleCopyLinks = () => {
                     </ul>
                   )}
 
-                  {/* Action Button */}
-                  <div className="flex justify-end">
+                  <div className="flex justify-end pt-4">
                     <button
-                      className="flex items-center px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition-colors focus:outline-none"
+                      className="btn-secondary flex items-center px-6 py-3 text-white rounded-xl font-semibold text-sm"
                       onClick={() => setShowAllUrlsModal(false)}
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-6 w-6 mr-3"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
                       Close
                     </button>
                   </div>
@@ -1601,44 +1653,39 @@ const handleCopyLinks = () => {
           {/* Subreddit Prompt Modal */}
           {showSubredditPrompt && (
             <div
-              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300"
+              className="modal-overlay fixed inset-0 flex items-center justify-center z-50"
               onClick={() => setShowSubredditPrompt(false)}
             >
               <div
-                className="bg-gray-800 dark:bg-gray-900 rounded-lg shadow-2xl max-w-md w-full mx-4 p-6 relative transform transition-transform duration-300"
+                className="modal-content card max-w-md w-full mx-4 p-6 relative"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Close Button */}
                 <button
-                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-200 focus:outline-none transition-colors"
+                  className="absolute top-4 right-4 text-secondary hover:text-primary focus:outline-none transition-colors"
                   onClick={() => setShowSubredditPrompt(false)}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
 
-                {/* Modal Content */}
                 <div className="space-y-6">
-                  {/* Title */}
-                  <h2 className="text-2xl font-bold text-white text-center">
+                  <h2 className="text-2xl font-bold text-main text-center">
                     Download Posts
                   </h2>
 
-                  {/* Subreddit Input */}
                   <input
                     type="text"
-                    className="w-full p-3 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:border-orange-500 text-white"
+                    className="input-field w-full p-4 rounded-xl"
                     placeholder="Enter Subreddit Name"
                     value={subreddit}
                     onChange={(e) => setSubreddit(e.target.value)}
                   />
 
-                  {/* Format Selection */}
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-300">Select Download Format</label>
+                  <div>
+                    <label className="block text-sm font-semibold text-main mb-2">Download Format</label>
                     <select
-                      className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:border-orange-500 text-white"
+                      className="input-field w-full p-3 rounded-xl"
                       value={downloadFormat}
                       onChange={(e) => setDownloadFormat(e.target.value)}
                     >
@@ -1647,48 +1694,22 @@ const handleCopyLinks = () => {
                     </select>
                   </div>
 
-                  {/* Action Buttons */}
                   <div className="flex justify-end space-x-4">
                     <button
-                      className={`flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition-colors focus:outline-none ${
-                        !subreddit.trim() || isLoading ? 'opacity-50 cursor-not-allowed' : ''
+                      className={`btn-success flex items-center px-6 py-3 text-white rounded-xl font-semibold text-sm ${
+                        !subreddit.trim() || isLoading ? 'opacity-60 cursor-not-allowed' : ''
                       }`}
                       onClick={handleConfirmDownload}
                       disabled={!subreddit.trim() || isLoading}
                     >
                       {isLoading ? (
                         <>
-                          <svg
-                            className="animate-spin h-5 w-5 mr-2 text-white"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            ></circle>
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8v8H4z"
-                            ></path>
-                          </svg>
+                          <div className="spinner w-5 h-5 rounded-full mr-3"></div>
                           Downloading...
                         </>
                       ) : (
                         <>
-                          <svg
-                            className="h-5 w-5 mr-2"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
+                          <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
                           Confirm
@@ -1696,19 +1717,10 @@ const handleCopyLinks = () => {
                       )}
                     </button>
                     <button
-                      className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow transition-colors focus:outline-none"
+                      className="btn-danger flex items-center px-6 py-3 text-white rounded-xl font-semibold text-sm"
                       onClick={() => setShowSubredditPrompt(false)}
                       disabled={isLoading}
                     >
-                      <svg
-                        className="h-5 w-5 mr-2"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
                       Cancel
                     </button>
                   </div>
@@ -1720,7 +1732,6 @@ const handleCopyLinks = () => {
       );
     }
 
-    // Render the component
     ReactDOM.render(<RedditLinkSaver />, document.getElementById('root'));
   </script>
 </body>
