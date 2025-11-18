@@ -589,6 +589,10 @@
       const [viewMode, setViewMode] = useState('allTogether');
       const [searchAllSortVariations, setSearchAllSortVariations] = useState(false);
 
+      // States for Pagination
+      const [postsPerPage, setPostsPerPage] = useState(100);
+      const [currentPage, setCurrentPage] = useState(1);
+
       // States for Aggregated URLs Modal
       const [showAllUrlsModal, setShowAllUrlsModal] = useState(false);
       const [allExtractedUrls, setAllExtractedUrls] = useState([]);
@@ -2448,6 +2452,28 @@ const handleCopyLinks = () => {
         });
       }, [posts, startDate, endDate, hidePostsWithoutComments, filterStudyPartner, searchQuery, searchInPosts, searchInComments]);
 
+      // Pagination logic
+      const paginatedPosts = useMemo(() => {
+        if (postsPerPage === 0) {
+          // No limit - show all posts
+          return filteredPosts;
+        }
+
+        const startIndex = (currentPage - 1) * postsPerPage;
+        const endIndex = startIndex + postsPerPage;
+        return filteredPosts.slice(startIndex, endIndex);
+      }, [filteredPosts, currentPage, postsPerPage]);
+
+      const totalPages = useMemo(() => {
+        if (postsPerPage === 0) return 1;
+        return Math.ceil(filteredPosts.length / postsPerPage);
+      }, [filteredPosts.length, postsPerPage]);
+
+      // Reset to page 1 when filters change
+      useEffect(() => {
+        setCurrentPage(1);
+      }, [searchQuery, startDate, endDate, hidePostsWithoutComments, filterStudyPartner, postsPerPage]);
+
       // Extract search terms for highlighting
       const searchTerms = useMemo(() => {
         return parseBooleanQuery(searchQuery);
@@ -2600,6 +2626,25 @@ const handleCopyLinks = () => {
                     />
                     <span className="ml-3 text-sm text-main font-medium">Search all sort variations (relevance, new, top, hot, comments)</span>
                   </label>
+                </div>
+
+                {/* Posts Per Page Selector */}
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-main mb-2">Posts Per Page (Display Limit)</label>
+                  <select
+                    className="input-field w-full p-3 rounded-xl text-sm"
+                    value={postsPerPage}
+                    onChange={(e) => setPostsPerPage(Number(e.target.value))}
+                  >
+                    <option value={100}>100 posts per page</option>
+                    <option value={200}>200 posts per page</option>
+                    <option value={500}>500 posts per page</option>
+                    <option value={1000}>1000 posts per page</option>
+                    <option value={0}>No limit (show all)</option>
+                  </select>
+                  <p className="text-xs text-secondary mt-2">
+                    💡 Limiting posts per page improves performance. Use pagination to navigate through all posts.
+                  </p>
                 </div>
 
                 {/* Advanced Boolean Search */}
@@ -2840,7 +2885,7 @@ const handleCopyLinks = () => {
                     </div>
                   ) : viewMode === 'windows' ? (
                     <div className="space-y-4">
-                      {filteredPosts.map((post, index) => (
+                      {paginatedPosts.map((post, index) => (
                         <div key={post.url} className="post-item card p-5 cursor-pointer" onClick={() => handleSelectPost(post)}>
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
@@ -2871,7 +2916,7 @@ const handleCopyLinks = () => {
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      {filteredPosts.map((post, index) => {
+                      {paginatedPosts.map((post, index) => {
                         const highlightedTitle = searchTerms && searchTerms.length > 0
                           ? highlightText(post.title, searchTerms)
                           : post.title;
@@ -2879,11 +2924,14 @@ const handleCopyLinks = () => {
                           ? highlightText(post.content, searchTerms)
                           : post.content;
 
+                        // Calculate the actual post number (accounting for pagination)
+                        const postNumber = postsPerPage === 0 ? index + 1 : (currentPage - 1) * postsPerPage + index + 1;
+
                         return (
                         <div key={post.url} className="post-item card p-6">
                           <div className="mb-4">
                             <h3 className="text-2xl font-bold text-main mb-3">
-                              Post {index + 1}: <span dangerouslySetInnerHTML={{ __html: highlightedTitle }} />
+                              Post {postNumber}: <span dangerouslySetInnerHTML={{ __html: highlightedTitle }} />
                             </h3>
                             <div className="flex items-center space-x-4 text-sm text-secondary mb-3">
                               <span className="flex items-center">
@@ -2937,6 +2985,62 @@ const handleCopyLinks = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Pagination Controls */}
+                {filteredPosts.length > 0 && postsPerPage > 0 && totalPages > 1 && (
+                  <div className="mt-6 flex items-center justify-between border-t pt-4">
+                    <div className="text-sm text-secondary">
+                      Showing {(currentPage - 1) * postsPerPage + 1} to {Math.min(currentPage * postsPerPage, filteredPosts.length)} of {filteredPosts.length} posts
+                      <span className="ml-2">(Page {currentPage} of {totalPages})</span>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                        className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all ${
+                          currentPage === 1
+                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        First
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all ${
+                          currentPage === 1
+                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        ← Previous
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all ${
+                          currentPage === totalPages
+                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        Next →
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages}
+                        className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all ${
+                          currentPage === totalPages
+                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        Last
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
