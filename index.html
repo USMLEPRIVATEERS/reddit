@@ -1516,7 +1516,7 @@
         }
       };
 
-      // Option 3: Fetch ALL posts from subreddit, then filter locally by keyword
+      // Option 3: Fetch ALL posts from subreddit with REAL-TIME saving
       const fetchSubredditListingComplete = async (searchUrl) => {
         try {
           setIsLoadingListingComplete(true);
@@ -1525,27 +1525,33 @@
           const subreddit = parsedUrl.pathname.split('/')[2];
           const sort = parsedUrl.searchParams.get('sort') || 'new';
 
-          console.log(`📋 Starting COMPLETE subreddit listing for r/${subreddit}`);
-          setExtractionLog(prev => [...prev, `📋 Listing: fetching ALL from r/${subreddit}, then filtering "${queryParam}"`]);
+          const filterEnabled = queryParam.trim() !== '';
 
-          let allFetchedPosts = []; // All posts before filtering
-          let totalScanned = 0;
+          console.log(`📋 Starting REAL-TIME subreddit scan for r/${subreddit}`);
+          if (filterEnabled) {
+            setExtractionLog(prev => [...prev, `📋 Real-time scan: r/${subreddit} filtering by "${queryParam}"`]);
+          } else {
+            setExtractionLog(prev => [...prev, `📋 Real-time scan: r/${subreddit} - SAVING ALL POSTS (no filter)`]);
+          }
+
+          let totalSavedPosts = 0; // Posts actually saved (after filter if enabled)
+          let totalScanned = 0; // All posts scanned
           let chunkCount = 0;
           let beforeTimestamp = null; // For time-based chunking
 
-          // Outer loop: Continue fetching in chunks until we have enough matching posts
-          while (allFetchedPosts.length < numPostsToSave) {
+          // Outer loop: Continue fetching in chunks until we have enough saved posts
+          while (totalSavedPosts < numPostsToSave) {
             chunkCount++;
             let after = null;
             let pageCount = 0;
-            let chunkPosts = [];
             let chunkScanned = 0;
 
             console.log(`🔄 Starting chunk ${chunkCount}${beforeTimestamp ? ` (before timestamp: ${beforeTimestamp})` : ''}`);
-            setExtractionLog(prev => [...prev, `🔄 Chunk ${chunkCount}: Fetching next batch...`]);
+            setExtractionLog(prev => [...prev, `🔄 Chunk ${chunkCount}: Scanning...`]);
 
-            // Inner loop: Fetch until Reddit stops returning "after" token (hits ~1000 limit)
-            while (true) {
+            // Inner loop: Fetch until Reddit stops returning "after" token OR we reach target
+            let lastPostTimestamp = null;
+            while (totalSavedPosts < numPostsToSave) {
               let apiUrl = `https://www.reddit.com/r/${subreddit}/${sort}.json?limit=100`;
 
               if (after) {
@@ -1553,17 +1559,12 @@
               }
 
               // Use timestamp to continue from where last chunk ended
-              // Note: Reddit listing API may not respect 'before' parameter well,
-              // so we'll rely on natural chronological order and track timestamp
-              // for potential future search API fallback
               if (beforeTimestamp && !after) {
-                // Attempt to use before parameter (may not work on all listing endpoints)
                 apiUrl += `&before=${beforeTimestamp}`;
               }
 
               pageCount++;
-              totalScanned = allFetchedPosts.length + chunkScanned;
-              console.log(`📄 Page ${pageCount} (chunk ${chunkCount})... (${allFetchedPosts.length} total fetched, ${totalScanned} scanned)`);
+              console.log(`📄 Page ${pageCount} (chunk ${chunkCount})... (${totalSavedPosts}/${numPostsToSave} saved, ${totalScanned} scanned)`);
 
               try {
                 const responseObj = await corsAwareFetch(apiUrl);
@@ -1575,7 +1576,7 @@
                   break;
                 }
 
-                // Store ALL posts from this page (before filtering)
+                // Process posts and extract data
                 const posts = data.data.children
                   .filter((post) => post.kind === 't3' && post.data.permalink)
                   .map((post) => {
@@ -1614,24 +1615,64 @@
                       author: post.data.author || '[deleted]',
                       comments: [],
                       imageUrls: imageUrls,
-                      _original_post_data: post.data, // Keep for timestamp reference
                     };
                   });
 
-                chunkPosts = [...chunkPosts, ...posts];
                 chunkScanned += data.data.children.length;
+                totalScanned += posts.length;
+
+                // Filter posts by keyword (if enabled)
+                let postsToSave = posts;
+                if (filterEnabled) {
+                  postsToSave = posts.filter(post => {
+                    const titleMatch = post.title && post.title.toLowerCase().includes(queryParam.toLowerCase());
+                    const textMatch = post.content && post.content.toLowerCase().includes(queryParam.toLowerCase());
+                    return titleMatch || textMatch;
+                  });
+                }
+
+                // REAL-TIME SAVE: Save matching posts immediately!
+                if (postsToSave.length > 0) {
+                  // Limit to remaining needed posts
+                  const remainingNeeded = numPostsToSave - totalSavedPosts;
+                  const postsToSaveNow = postsToSave.slice(0, remainingNeeded);
+
+                  setPosts((prevPosts) => {
+                    const combined = [...prevPosts, ...postsToSaveNow];
+                    const uniquePosts = Array.from(new Map(combined.map(p => [p.url, p])).values());
+                    localStorage.setItem('savedRedditPosts', JSON.stringify(uniquePosts));
+                    return uniquePosts;
+                  });
+
+                  totalSavedPosts += postsToSaveNow.length;
+
+                  console.log(`💾 SAVED ${postsToSaveNow.length} posts! Total: ${totalSavedPosts}/${numPostsToSave}`);
+                  setExtractionLog(prev => [...prev, `💾 +${postsToSaveNow.length} posts saved (${totalSavedPosts}/${numPostsToSave})`]);
+                }
+
+                // Track last post timestamp for chunking
+                if (posts.length > 0) {
+                  lastPostTimestamp = posts[posts.length - 1].created_utc;
+                }
+
                 after = data.data.after;
+
+                // Check if we reached target
+                if (totalSavedPosts >= numPostsToSave) {
+                  console.log(`🎯 Target reached! ${totalSavedPosts} posts saved`);
+                  setExtractionLog(prev => [...prev, `🎯 Target reached: ${totalSavedPosts} posts`]);
+                  break;
+                }
 
                 // If Reddit stopped providing "after" token, this chunk is done
                 if (!after) {
-                  console.log(`✅ Chunk ${chunkCount} complete: Reddit stopped pagination (hit ~1000 limit)`);
-                  setExtractionLog(prev => [...prev, `✅ Chunk ${chunkCount}: Fetched ${chunkPosts.length} posts`]);
+                  console.log(`✅ Chunk ${chunkCount} complete: Reddit stopped pagination`);
+                  setExtractionLog(prev => [...prev, `✅ Chunk ${chunkCount} done`]);
 
-                  // Get timestamp of last post for next chunk
-                  if (chunkPosts.length > 0) {
-                    const lastPost = chunkPosts[chunkPosts.length - 1];
-                    beforeTimestamp = lastPost.created_utc - 1; // Subtract 1 to avoid duplicate
-                    console.log(`⏰ Next chunk will start before timestamp: ${beforeTimestamp}`);
+                  // Prepare for next chunk
+                  if (lastPostTimestamp) {
+                    beforeTimestamp = lastPostTimestamp - 1;
+                    console.log(`⏰ Next chunk starts before: ${beforeTimestamp}`);
                   }
                   break;
                 }
@@ -1640,66 +1681,31 @@
 
               } catch (error) {
                 console.error(`❌ Page ${pageCount} (chunk ${chunkCount}) error:`, error);
-                setExtractionLog(prev => [...prev, `❌ Chunk ${chunkCount} page ${pageCount}: ${error.message}`]);
+                setExtractionLog(prev => [...prev, `❌ Error: ${error.message}`]);
                 break;
               }
             }
 
-            // Add this chunk's posts to total
-            allFetchedPosts = [...allFetchedPosts, ...chunkPosts];
+            // If we reached target, stop all chunks
+            if (totalSavedPosts >= numPostsToSave) {
+              break;
+            }
 
-            // If this chunk returned no posts, we've truly reached the end
-            if (chunkPosts.length === 0) {
+            // If this chunk returned no new saved posts and no more pages, end
+            if (chunkScanned === 0) {
               console.log('🏁 No more posts available in subreddit');
               setExtractionLog(prev => [...prev, '🏁 Reached end of subreddit']);
               break;
             }
-
-            // Check if we have enough posts now
-            const matchingCount = allFetchedPosts.filter(post => {
-              if (!queryParam) return true;
-              const titleMatch = post.title && post.title.toLowerCase().includes(queryParam.toLowerCase());
-              const textMatch = post.content && post.content.toLowerCase().includes(queryParam.toLowerCase());
-              return titleMatch || textMatch;
-            }).length;
-
-            console.log(`📊 Total: ${allFetchedPosts.length} posts fetched, ${matchingCount} match keyword "${queryParam}"`);
-            setExtractionLog(prev => [...prev, `📊 Progress: ${matchingCount} matches / ${allFetchedPosts.length} scanned`]);
-
-            if (matchingCount >= numPostsToSave) {
-              console.log(`✅ Target reached! Found ${matchingCount} matching posts`);
-              setExtractionLog(prev => [...prev, `✅ Target reached: ${matchingCount} matches`]);
-              break;
-            }
           }
 
-          // Now filter by keyword and limit to numPostsToSave
-          let filteredPosts = allFetchedPosts;
-          if (queryParam) {
-            filteredPosts = allFetchedPosts.filter(post => {
-              const titleMatch = post.title && post.title.toLowerCase().includes(queryParam.toLowerCase());
-              const textMatch = post.content && post.content.toLowerCase().includes(queryParam.toLowerCase());
-              return titleMatch || textMatch;
-            });
-          }
-
-          filteredPosts = filteredPosts.slice(0, numPostsToSave);
-
-          // Clean up temporary data
-          filteredPosts.forEach(post => delete post._original_post_data);
-
-          console.log(`✅ Listing complete: ${filteredPosts.length} matching posts from ${allFetchedPosts.length} total scanned`);
-          setExtractionLog(prev => [...prev, `✅ Complete: ${filteredPosts.length} matches from ${allFetchedPosts.length} posts`]);
-
-          setPosts((prevPosts) => {
-            const combined = [...prevPosts, ...filteredPosts];
-            const uniquePosts = Array.from(new Map(combined.map(p => [p.url, p])).values());
-            localStorage.setItem('savedRedditPosts', JSON.stringify(uniquePosts));
-            return uniquePosts;
-          });
+          console.log(`✅ Scan complete: ${totalSavedPosts} posts saved from ${totalScanned} scanned in ${chunkCount} chunks`);
+          setExtractionLog(prev => [...prev, `✅ Complete: ${totalSavedPosts} saved / ${totalScanned} scanned`]);
 
           setIsLoadingListingComplete(false);
-          alert(`✅ Listing complete! Added ${filteredPosts.length} matching posts (scanned ${allFetchedPosts.length} total in ${chunkCount} chunks).`);
+
+          const modeMsg = filterEnabled ? `matching "${queryParam}"` : 'total';
+          alert(`✅ Real-time scan complete! ${totalSavedPosts} posts saved ${modeMsg} (${totalScanned} scanned, ${chunkCount} chunks)`);
 
         } catch (error) {
           console.error('Listing complete error:', error);
@@ -2593,15 +2599,17 @@ const handleCopyLinks = () => {
                         <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                         </svg>
-                        📋 Scan Full Subreddit + Filter
+                        🔴 Real-Time Subreddit Scanner
                       </>
                     )}
                   </button>
 
                   <div className="text-xs text-secondary bg-yellow-50 p-2 rounded">
-                    💡 Use this if Reddit search only shows recent posts (usually ~4 months). This method scans ALL posts in the subreddit and filters locally by your keyword.
+                    💡 <strong>Real-time scanning:</strong> Posts appear instantly in "Saved Posts" as they're found!
                     <br/><br/>
-                    🔄 <strong>Smart Pagination:</strong> Automatically continues past Reddit's ~1000 post limit by using time-based chunking. Will keep fetching until your target is reached!
+                    🔍 <strong>Keyword optional:</strong> Leave keyword empty to save ALL posts (no filter), or add keyword to filter while scanning.
+                    <br/><br/>
+                    🔄 <strong>Smart Pagination:</strong> Automatically continues past Reddit's ~1000 post limit using time-based chunking until your target is reached!
                   </div>
                 </div>
 
