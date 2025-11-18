@@ -708,7 +708,18 @@
         const redditExternalPreviewRegex = /(https?:\/\/external-preview\.redd\.it\/[^\s]+)/gi;
 
         posts.forEach(post => {
-          // Check post content
+          // PRIORITY 1: Use image URLs extracted from Reddit API data
+          if (post.imageUrls && post.imageUrls.length > 0) {
+            post.imageUrls.forEach(url => {
+              images.push({
+                url: url,
+                postTitle: post.title,
+                postUrl: post.url
+              });
+            });
+          }
+
+          // PRIORITY 2: Check post content with regex (for text-based image links)
           const postImages = [
             ...(post.content.match(imageRegex) || []),
             ...(post.content.match(imgurRegex) || []),
@@ -734,7 +745,7 @@
             });
           });
 
-          // Check comments
+          // PRIORITY 3: Check comments
           const extractFromComments = (comments) => {
             comments.forEach(comment => {
               const commentImages = [
@@ -1296,6 +1307,37 @@
                   return true;
                 })
                 .map((post) => {
+                  // Extract image URLs from Reddit API data
+                  const imageUrls = [];
+
+                  // Check if post.data.url is a direct image
+                  if (post.data.url && post.data.url.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)) {
+                    imageUrls.push(post.data.url);
+                  }
+
+                  // Check for preview images (most common for image posts)
+                  if (post.data.preview && post.data.preview.images && post.data.preview.images.length > 0) {
+                    const previewUrl = post.data.preview.images[0].source.url;
+                    // Decode HTML entities in URL (&amp; -> &)
+                    const decodedUrl = previewUrl.replace(/&amp;/g, '&');
+                    imageUrls.push(decodedUrl);
+                  }
+
+                  // Check for gallery images
+                  if (post.data.gallery_data && post.data.media_metadata) {
+                    Object.values(post.data.media_metadata).forEach(media => {
+                      if (media.s && media.s.u) {
+                        const galleryUrl = media.s.u.replace(/&amp;/g, '&');
+                        imageUrls.push(galleryUrl);
+                      }
+                    });
+                  }
+
+                  // Check for i.redd.it or imgur links in the URL
+                  if (post.data.url && (post.data.url.includes('i.redd.it') || post.data.url.includes('imgur.com'))) {
+                    imageUrls.push(post.data.url);
+                  }
+
                   return {
                     title: post.data.title || 'No title found.',
                     content: post.data.selftext || 'No content found.',
@@ -1305,6 +1347,7 @@
                     num_comments: post.data.num_comments || 0,
                     author: post.data.author || '[deleted]',
                     comments: [],
+                    imageUrls: imageUrls, // Store extracted image URLs
                   };
                 });
 
@@ -1418,6 +1461,37 @@
                   return true;
                 })
                 .map((post) => {
+                  // Extract image URLs from Reddit API data
+                  const imageUrls = [];
+
+                  // Check if post.data.url is a direct image
+                  if (post.data.url && post.data.url.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)) {
+                    imageUrls.push(post.data.url);
+                  }
+
+                  // Check for preview images (most common for image posts)
+                  if (post.data.preview && post.data.preview.images && post.data.preview.images.length > 0) {
+                    const previewUrl = post.data.preview.images[0].source.url;
+                    // Decode HTML entities in URL (&amp; -> &)
+                    const decodedUrl = previewUrl.replace(/&amp;/g, '&');
+                    imageUrls.push(decodedUrl);
+                  }
+
+                  // Check for gallery images
+                  if (post.data.gallery_data && post.data.media_metadata) {
+                    Object.values(post.data.media_metadata).forEach(media => {
+                      if (media.s && media.s.u) {
+                        const galleryUrl = media.s.u.replace(/&amp;/g, '&');
+                        imageUrls.push(galleryUrl);
+                      }
+                    });
+                  }
+
+                  // Check for i.redd.it or imgur links in the URL
+                  if (post.data.url && (post.data.url.includes('i.redd.it') || post.data.url.includes('imgur.com'))) {
+                    imageUrls.push(post.data.url);
+                  }
+
                   return {
                     title: post.data.title || 'No title found.',
                     content: post.data.selftext || 'No content found.',
@@ -1427,6 +1501,7 @@
                     num_comments: post.data.num_comments || 0,
                     author: post.data.author || '[deleted]',
                     comments: [],
+                    imageUrls: imageUrls, // Store extracted image URLs
                   };
                 });
 
