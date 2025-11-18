@@ -1032,7 +1032,7 @@
         return fetchPostCommentsMassive(postUrl, null);
       };
 
-      // Fetch search results from Reddit's API
+      // Fetch search results from Reddit's API with DEEP PAGINATION
       const fetchSearchResults = async (searchUrl) => {
         try {
           const parsedUrl = new URL(searchUrl);
@@ -1064,39 +1064,93 @@
             q = '';
           }
 
-          const apiUrl = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(
-            q
-          )}&restrict_sr=on&sort=${sort}&syntax=cloudsearch&limit=100`;
+          let fetchedPosts = [];
+          let after = null;
+          let pageCount = 0;
+          let consecutiveEmptyPages = 0;
 
-          console.log(`Fetching search results from API: ${apiUrl}`);
+          console.log(`🔍 Starting DEEP SEARCH pagination for query: "${q}"`);
+          setExtractionLog(prev => [...prev, `🔍 Deep search: "${queryParam}" in r/${subreddit}`]);
 
-          const response = await corsAwareFetch(apiUrl);
-          if (!response.ok) {
-            throw new Error('Failed to fetch search results from API.');
+          // Continue fetching pages until we hit target or run out of results
+          while (fetchedPosts.length < numPostsToSave && consecutiveEmptyPages < 3) {
+            let apiUrl = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(
+              q
+            )}&restrict_sr=on&sort=${sort}&syntax=cloudsearch&limit=100`;
+
+            if (after) {
+              apiUrl += `&after=${after}`;
+            }
+
+            pageCount++;
+            console.log(`📄 Fetching search page ${pageCount}... (${fetchedPosts.length}/${numPostsToSave} posts so far)`);
+            setExtractionLog(prev => [...prev, `📄 Search page ${pageCount} (${fetchedPosts.length}/${numPostsToSave})`]);
+
+            try {
+              const response = await corsAwareFetch(apiUrl);
+              if (!response.ok) {
+                throw new Error('Failed to fetch search results from API.');
+              }
+
+              const data = await response.json();
+              console.log(`📊 Page ${pageCount} returned ${data.data.children.length} results`);
+
+              const posts = data.data.children
+                .filter((post) => {
+                  if (post.kind !== 't3' || !post.data.permalink) return false;
+                  return true;
+                })
+                .map((post) => {
+                  return {
+                    title: post.data.title || 'No title found.',
+                    content: post.data.selftext || 'No content found.',
+                    url: `https://www.reddit.com${post.data.permalink}`,
+                    subreddit: post.data.subreddit || 'unknown',
+                    created_utc: post.data.created_utc || null,
+                    num_comments: post.data.num_comments || 0,
+                    author: post.data.author || '[deleted]',
+                    comments: [],
+                  };
+                });
+
+              if (posts.length === 0) {
+                consecutiveEmptyPages++;
+                console.log(`⚠️ Empty search page detected (${consecutiveEmptyPages}/3)`);
+                setExtractionLog(prev => [...prev, `⚠️ Empty page (${consecutiveEmptyPages}/3)`]);
+              } else {
+                consecutiveEmptyPages = 0;
+                fetchedPosts = [...fetchedPosts, ...posts];
+                console.log(`✅ Total posts collected: ${fetchedPosts.length}`);
+
+                // Auto-save every 50 posts during search
+                if (fetchedPosts.length % 50 === 0 && fetchedPosts.length > 0) {
+                  console.log(`💾 Auto-saving ${fetchedPosts.length} search results...`);
+                  setExtractionLog(prev => [...prev, `💾 Auto-saved ${fetchedPosts.length} posts`]);
+                }
+              }
+
+              after = data.data.after;
+              if (!after) {
+                console.log('🏁 Reached end of search results (no more pages)');
+                setExtractionLog(prev => [...prev, '🏁 No more search results']);
+                break;
+              }
+
+              // Small delay between pages to respect rate limits
+              await new Promise(resolve => setTimeout(resolve, 500));
+
+            } catch (error) {
+              console.error(`❌ Error on search page ${pageCount}:`, error);
+              setExtractionLog(prev => [...prev, `❌ Page ${pageCount} error: ${error.message}`]);
+              // Continue to next page on error
+              consecutiveEmptyPages++;
+            }
           }
 
-          const data = await response.json();
-          console.log(`Search results received: ${data.data.children.length} posts found.`);
-
-          let fetchedPosts = data.data.children
-            .filter((post) => {
-              if (post.kind !== 't3' || !post.data.permalink) return false;
-              return true;
-            })
-            .map((post) => {
-              return {
-                title: post.data.title || 'No title found.',
-                content: post.data.selftext || 'No content found.',
-                url: `https://www.reddit.com${post.data.permalink}`,
-                subreddit: post.data.subreddit || 'unknown',
-                created_utc: post.data.created_utc || null,
-                num_comments: post.data.num_comments || 0,
-                author: post.data.author || '[deleted]',
-                comments: [],
-              };
-            });
-
           fetchedPosts = fetchedPosts.slice(0, numPostsToSave);
+
+          console.log(`✅ Search completed! Extracted ${fetchedPosts.length} posts from ${pageCount} page(s)`);
+          setExtractionLog(prev => [...prev, `✅ Search done: ${fetchedPosts.length} posts from ${pageCount} pages`]);
 
           return fetchedPosts;
         } catch (error) {
