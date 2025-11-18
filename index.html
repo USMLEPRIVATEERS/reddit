@@ -350,6 +350,28 @@
       }
     }
 
+    // Highlight search terms in text
+    const highlightText = (text, searchTerms) => {
+      if (!searchTerms || searchTerms.length === 0 || !text) return text;
+
+      let highlightedText = text;
+      searchTerms.forEach(term => {
+        if (!term) return;
+
+        // Handle wildcards
+        if (term.endsWith('*')) {
+          const baseTerm = term.slice(0, -1);
+          const regex = new RegExp(`\\b(${baseTerm}\\w*)`, 'gi');
+          highlightedText = highlightedText.replace(regex, '<mark class="bg-yellow-300 font-bold">$1</mark>');
+        } else {
+          const regex = new RegExp(`(${term})`, 'gi');
+          highlightedText = highlightedText.replace(regex, '<mark class="bg-yellow-300 font-bold">$1</mark>');
+        }
+      });
+
+      return highlightedText;
+    };
+
     // Recursive Comment Component with highlighting
     const Comment = ({ comment, depth = 0, showUserNames, searchTerms = [] }) => {
       const paddingLeft = depth * 24;
@@ -525,28 +547,6 @@
             normalizedText.includes(term.toLowerCase().replace(/[^a-z0-9*]/g, ''))
           );
         }
-      };
-
-      // Highlight search terms in text
-      const highlightText = (text, searchTerms) => {
-        if (!searchTerms || searchTerms.length === 0 || !text) return text;
-
-        let highlightedText = text;
-        searchTerms.forEach(term => {
-          if (!term) return;
-
-          // Handle wildcards
-          if (term.endsWith('*')) {
-            const baseTerm = term.slice(0, -1);
-            const regex = new RegExp(`\\b(${baseTerm}\\w*)`, 'gi');
-            highlightedText = highlightedText.replace(regex, '<mark class="bg-yellow-300 font-bold">$1</mark>');
-          } else {
-            const regex = new RegExp(`(${term})`, 'gi');
-            highlightedText = highlightedText.replace(regex, '<mark class="bg-yellow-300 font-bold">$1</mark>');
-          }
-        });
-
-        return highlightedText;
       };
 
       // Extract image URLs from posts and comments
