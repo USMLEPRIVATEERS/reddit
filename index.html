@@ -510,6 +510,50 @@
       }
     }
 
+    // ====== LOCALSTORAGE SIZE MONITORING ======
+
+    // Calculate size of a string/object in bytes
+    const getByteSize = (obj) => {
+      const str = typeof obj === 'string' ? obj : JSON.stringify(obj);
+      return new Blob([str]).size;
+    };
+
+    // Get current localStorage usage
+    const getLocalStorageSize = () => {
+      let total = 0;
+      for (let key in localStorage) {
+        if (localStorage.hasOwnProperty(key)) {
+          total += getByteSize(localStorage[key]);
+        }
+      }
+      return total;
+    };
+
+    // Format bytes to human-readable format
+    const formatBytes = (bytes) => {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    };
+
+    // Check if localStorage is near capacity (5MB limit typical)
+    const isLocalStorageNearLimit = (threshold = 0.85) => {
+      const LOCALSTORAGE_LIMIT = 5 * 1024 * 1024; // 5MB typical limit
+      const currentSize = getLocalStorageSize();
+      const percentUsed = currentSize / LOCALSTORAGE_LIMIT;
+
+      console.log(`📊 localStorage: ${formatBytes(currentSize)} / ${formatBytes(LOCALSTORAGE_LIMIT)} (${Math.round(percentUsed * 100)}%)`);
+
+      return percentUsed >= threshold;
+    };
+
+    // Calculate size of post with comments
+    const getPostSize = (post) => {
+      return getByteSize(post);
+    };
+
     // Highlight search terms in text
     const highlightText = (text, searchTerms) => {
       if (!searchTerms || searchTerms.length === 0 || !text) return text;
@@ -602,6 +646,11 @@
       const [progressStats, setProgressStats] = useState(null);
       const [showProgressModal, setShowProgressModal] = useState(false);
       const [extractionLog, setExtractionLog] = useState([]);
+
+      // States for localStorage monitoring
+      const [storageWarning, setStorageWarning] = useState(false);
+      const [storagePaused, setStoragePaused] = useState(false);
+      const [storageInfo, setStorageInfo] = useState({ used: 0, percent: 0 });
 
       // States for Advanced Search & Filters
       const [searchQuery, setSearchQuery] = useState('');
@@ -903,9 +952,46 @@
         }
       }, []);
 
-      // Save posts to localStorage whenever posts state changes
+      // Save posts to localStorage whenever posts state changes (WITHOUT comments to save space)
       useEffect(() => {
-        localStorage.setItem('savedRedditPosts', JSON.stringify(posts));
+        try {
+          // Strip comments before saving to avoid localStorage quota errors
+          const postsWithoutComments = posts.map(post => {
+            const { comments, ...postWithoutComments } = post;
+            return postWithoutComments;
+          });
+          localStorage.setItem('savedRedditPosts', JSON.stringify(postsWithoutComments));
+        } catch (error) {
+          console.error('❌ Failed to save to localStorage:', error);
+          // If still fails, clear old data and try again
+          if (error.name === 'QuotaExceededError') {
+            console.warn('⚠️ localStorage quota exceeded even without comments. Keeping data in memory only.');
+            setStorageWarning(true);
+          }
+        }
+      }, [posts]);
+
+      // Monitor localStorage usage
+      useEffect(() => {
+        const LOCALSTORAGE_LIMIT = 5 * 1024 * 1024; // 5MB typical limit
+        const currentSize = getLocalStorageSize();
+        const percentUsed = currentSize / LOCALSTORAGE_LIMIT;
+
+        setStorageInfo({
+          used: currentSize,
+          percent: Math.round(percentUsed * 100)
+        });
+
+        // Warn at 75%, pause at 90%
+        if (percentUsed >= 0.9) {
+          setStoragePaused(true);
+          setStorageWarning(true);
+        } else if (percentUsed >= 0.75) {
+          setStorageWarning(true);
+        } else {
+          setStorageWarning(false);
+          setStoragePaused(false);
+        }
       }, [posts]);
 
       // Helper function to convert date string to Unix timestamp in UTC
@@ -1559,7 +1645,7 @@
           setPosts((prevPosts) => {
             const combined = [...prevPosts, ...fetchedPosts];
             const uniquePosts = Array.from(new Map(combined.map(p => [p.url, p])).values());
-            localStorage.setItem('savedRedditPosts', JSON.stringify(uniquePosts));
+            // localStorage saving is handled by useEffect - no need to save here
             return uniquePosts;
           });
 
@@ -1730,7 +1816,7 @@
                   setPosts((prevPosts) => {
                     const combined = [...prevPosts, ...cleanedPosts];
                     const uniquePosts = Array.from(new Map(combined.map(p => [p.url, p])).values());
-                    localStorage.setItem('savedRedditPosts', JSON.stringify(uniquePosts));
+                    // localStorage saving is handled by useEffect - no need to save here
                     return uniquePosts;
                   });
 
@@ -2122,7 +2208,7 @@
             if (successCount >= numPostsToSave) break;
           }
 
-          // Fetch comments with controlled concurrency
+          // Fetch comments with controlled concurrency AND PROGRESSIVE ADDITION
           if (newPosts.length > 0) {
             progressTracker.update({
               currentOperation: 'Fetching comments...',
@@ -2135,6 +2221,20 @@
             const batchSize = 10;
 
             for (let i = 0; i < newPosts.length; i += batchSize) {
+              // Check localStorage before processing each batch
+              if (isLocalStorageNearLimit(0.9)) {
+                console.warn('⚠️ localStorage near limit (90%), pausing extraction');
+                setExtractionLog(prev => [...prev, `⚠️ PAUSED: localStorage at capacity (${storageInfo.percent}%)`]);
+                setExtractionLog(prev => [...prev, `💾 Download current posts to free space, then continue`]);
+                setStoragePaused(true);
+                setAlertMessage({
+                  text: `⚠️ Storage limit reached (${storageInfo.percent}%)! Download your posts to free space before continuing.`,
+                  type: 'error'
+                });
+                setShowAlert(true);
+                break; // Stop processing more batches
+              }
+
               const batch = newPosts.slice(i, i + batchSize);
 
               await concurrencyManager.runBatch(
@@ -2143,6 +2243,11 @@
                     try {
                       post.comments = await fetchPostCommentsMassive(post.url, rateLimiter);
                       commentsProcessed++;
+
+                      // Log post size for monitoring
+                      const postSize = getPostSize(post);
+                      console.log(`📦 Post "${post.title.substring(0, 30)}..." size: ${formatBytes(postSize)}`);
+
                       progressTracker.update({
                         fetchedComments: commentsProcessed,
                         currentOperation: `Fetched comments ${commentsProcessed}/${newPosts.length} (${commentsFailed} failed)`
@@ -2161,13 +2266,19 @@
                   }
                 })
               );
+
+              // ADD POSTS PROGRESSIVELY after each batch is processed
+              setPosts((prevPosts) => {
+                const postsToAdd = batch.filter(post => !prevPosts.some(p => p.url === post.url));
+                return [...postsToAdd, ...prevPosts];
+              });
             }
 
             setExtractionLog(prev => [...prev, `✅ Completed comments extraction: ${commentsProcessed - commentsFailed} succeeded, ${commentsFailed} failed`]);
+          } else {
+            // If no posts have comments to fetch, still add them
+            setPosts((prevPosts) => [...newPosts, ...prevPosts]);
           }
-
-          // Final save
-          setPosts((prevPosts) => [...newPosts, ...prevPosts]);
           setUrl('');
 
           let message = '';
@@ -2656,8 +2767,23 @@ const handleCopyLinks = () => {
             <div className="header-gradient p-8 rounded-2xl shadow-xl text-white text-center relative">
               <h1 className="text-4xl font-bold mb-2">Reddit Scraper</h1>
               <p className="text-lg opacity-90">Extract, Save & Analyze Reddit Posts</p>
-              <div className="absolute top-4 right-4 bg-white bg-opacity-20 px-3 py-1 rounded-full text-xs font-semibold">
-                🌐 CORS Proxy Active
+              <div className="absolute top-4 right-4 flex flex-col gap-2">
+                <div className="bg-white bg-opacity-20 px-3 py-1 rounded-full text-xs font-semibold">
+                  🌐 CORS Proxy Active
+                </div>
+                {storageInfo.percent > 0 && (
+                  <div
+                    className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      storageInfo.percent >= 90
+                        ? 'bg-red-500 bg-opacity-90'
+                        : storageInfo.percent >= 75
+                        ? 'bg-yellow-500 bg-opacity-90'
+                        : 'bg-green-500 bg-opacity-90'
+                    }`}
+                  >
+                    💾 Storage: {storageInfo.percent}% ({formatBytes(storageInfo.used)})
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -2687,6 +2813,56 @@ const handleCopyLinks = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
+            </div>
+          )}
+
+          {/* Storage Warning */}
+          {storagePaused && (
+            <div
+              className="w-full max-w-6xl mb-6 px-6 py-4 rounded-xl shadow-lg bg-red-50 border-2 border-red-500 slide-in"
+              role="alert"
+            >
+              <div className="flex items-start">
+                <svg className="w-6 h-6 text-red-600 mr-3 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className="flex-1">
+                  <h3 className="text-red-800 font-bold mb-2">⚠️ Storage Limit Reached ({storageInfo.percent}%)</h3>
+                  <p className="text-red-700 text-sm mb-3">
+                    Scraping has been paused to prevent data loss. Please download your posts to free up space, then you can continue scraping.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      className="btn-success px-4 py-2 text-white rounded-lg font-semibold text-sm"
+                      onClick={handleDownloadPosts}
+                    >
+                      💾 Download Posts Now
+                    </button>
+                    <button
+                      className="btn-danger px-4 py-2 text-white rounded-lg font-semibold text-sm"
+                      onClick={deleteAllPosts}
+                    >
+                      🗑️ Clear All Posts
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {storageWarning && !storagePaused && (
+            <div
+              className="w-full max-w-6xl mb-6 px-6 py-4 rounded-xl shadow-lg bg-yellow-50 border-2 border-yellow-500 slide-in"
+              role="alert"
+            >
+              <div className="flex items-center">
+                <svg className="w-6 h-6 text-yellow-600 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-yellow-800 font-semibold">
+                  ⚠️ Storage Warning: {storageInfo.percent}% used. Consider downloading posts soon to avoid hitting the limit.
+                </p>
+              </div>
             </div>
           )}
 
