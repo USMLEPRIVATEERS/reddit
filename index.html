@@ -1538,6 +1538,7 @@
           let totalScanned = 0; // All posts scanned
           let chunkCount = 0;
           let beforeTimestamp = null; // For time-based chunking
+          let seenPostIds = new Set(); // Track seen posts to detect loops
 
           // Outer loop: Continue fetching in chunks until we have enough saved posts
           while (totalSavedPosts < numPostsToSave) {
@@ -1545,12 +1546,14 @@
             let after = null;
             let pageCount = 0;
             let chunkScanned = 0;
+            let chunkNewPosts = 0; // Track NEW posts in this chunk (not duplicates)
 
             console.log(`🔄 Starting chunk ${chunkCount}${beforeTimestamp ? ` (before timestamp: ${beforeTimestamp})` : ''}`);
             setExtractionLog(prev => [...prev, `🔄 Chunk ${chunkCount}: Scanning...`]);
 
             // Inner loop: Fetch until Reddit stops returning "after" token OR we reach target
             let lastPostTimestamp = null;
+
             while (totalSavedPosts < numPostsToSave) {
               let apiUrl = `https://www.reddit.com/r/${subreddit}/${sort}.json?limit=100`;
 
@@ -1558,10 +1561,8 @@
                 apiUrl += `&after=${after}`;
               }
 
-              // Use timestamp to continue from where last chunk ended
-              if (beforeTimestamp && !after) {
-                apiUrl += `&before=${beforeTimestamp}`;
-              }
+              // Note: Reddit listing API doesn't support 'before' parameter reliably
+              // We rely on duplicate detection to stop loops instead
 
               pageCount++;
               console.log(`📄 Page ${pageCount} (chunk ${chunkCount})... (${totalSavedPosts}/${numPostsToSave} saved, ${totalScanned} scanned)`);
@@ -1615,16 +1616,35 @@
                       author: post.data.author || '[deleted]',
                       comments: [],
                       imageUrls: imageUrls,
+                      postId: post.data.id, // Track post ID for duplicate detection
                     };
                   });
 
-                chunkScanned += data.data.children.length;
-                totalScanned += posts.length;
+                // Detect duplicates: count how many NEW posts we got
+                const newPosts = posts.filter(post => !seenPostIds.has(post.postId));
+                newPosts.forEach(post => seenPostIds.add(post.postId));
 
-                // Filter posts by keyword (if enabled)
-                let postsToSave = posts;
+                chunkNewPosts += newPosts.length;
+                chunkScanned += data.data.children.length;
+                totalScanned += newPosts.length; // Only count NEW posts
+
+                // Detect infinite loop: if we got 0 new posts for 2 consecutive pages, stop chunk
+                if (newPosts.length === 0) {
+                  console.log(`⚠️ Warning: Got 0 new posts (all duplicates) - may be in a loop`);
+                  setExtractionLog(prev => [...prev, `⚠️ Duplicates detected, checking...`]);
+
+                  // Give it one more chance, then stop
+                  if (pageCount > 2) {
+                    console.log(`🛑 Stopping chunk ${chunkCount}: too many duplicates (loop detected)`);
+                    setExtractionLog(prev => [...prev, `🛑 Loop detected, stopping chunk`]);
+                    break;
+                  }
+                }
+
+                // Filter NEW posts by keyword (if enabled)
+                let postsToSave = newPosts;
                 if (filterEnabled) {
-                  postsToSave = posts.filter(post => {
+                  postsToSave = newPosts.filter(post => {
                     const titleMatch = post.title && post.title.toLowerCase().includes(queryParam.toLowerCase());
                     const textMatch = post.content && post.content.toLowerCase().includes(queryParam.toLowerCase());
                     return titleMatch || textMatch;
@@ -1637,8 +1657,14 @@
                   const remainingNeeded = numPostsToSave - totalSavedPosts;
                   const postsToSaveNow = postsToSave.slice(0, remainingNeeded);
 
+                  // Remove postId before saving (temporary field)
+                  const cleanedPosts = postsToSaveNow.map(post => {
+                    const { postId, ...cleanPost } = post;
+                    return cleanPost;
+                  });
+
                   setPosts((prevPosts) => {
-                    const combined = [...prevPosts, ...postsToSaveNow];
+                    const combined = [...prevPosts, ...cleanedPosts];
                     const uniquePosts = Array.from(new Map(combined.map(p => [p.url, p])).values());
                     localStorage.setItem('savedRedditPosts', JSON.stringify(uniquePosts));
                     return uniquePosts;
@@ -1650,9 +1676,9 @@
                   setExtractionLog(prev => [...prev, `💾 +${postsToSaveNow.length} posts saved (${totalSavedPosts}/${numPostsToSave})`]);
                 }
 
-                // Track last post timestamp for chunking
-                if (posts.length > 0) {
-                  lastPostTimestamp = posts[posts.length - 1].created_utc;
+                // Track last post timestamp for chunking (use last NEW post)
+                if (newPosts.length > 0) {
+                  lastPostTimestamp = newPosts[newPosts.length - 1].created_utc;
                 }
 
                 after = data.data.after;
@@ -1691,12 +1717,14 @@
               break;
             }
 
-            // If this chunk returned no new saved posts and no more pages, end
-            if (chunkScanned === 0) {
-              console.log('🏁 No more posts available in subreddit');
-              setExtractionLog(prev => [...prev, '🏁 Reached end of subreddit']);
+            // If this chunk got NO new posts (all duplicates), we're in a loop - STOP
+            if (chunkNewPosts === 0) {
+              console.log('🛑 Stopping: No new posts in this chunk (hit API limit or end of subreddit)');
+              setExtractionLog(prev => [...prev, '🛑 No new posts found, stopping scan']);
               break;
             }
+
+            console.log(`✅ Chunk ${chunkCount} complete: ${chunkNewPosts} new posts found`);
           }
 
           console.log(`✅ Scan complete: ${totalSavedPosts} posts saved from ${totalScanned} scanned in ${chunkCount} chunks`);
