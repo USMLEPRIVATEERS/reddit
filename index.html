@@ -200,6 +200,57 @@
 
     // ====== MASSIVE EXTRACTION UTILITIES ======
 
+    // CORS Proxy System with fallback
+    const CORS_PROXIES = [
+      'https://corsproxy.io/?',
+      'https://api.allorigins.win/raw?url=',
+      'https://api.codetabs.com/v1/proxy?quest=',
+    ];
+
+    let currentProxyIndex = 0;
+
+    // Helper function to make CORS-safe requests
+    async function corsAwareFetch(url, options = {}) {
+      const maxRetries = CORS_PROXIES.length;
+      let lastError = null;
+
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          const proxyUrl = CORS_PROXIES[currentProxyIndex] + encodeURIComponent(url);
+          console.log(`🌐 Attempting fetch via proxy ${currentProxyIndex + 1}/${CORS_PROXIES.length}: ${proxyUrl}`);
+
+          const response = await fetch(proxyUrl, {
+            ...options,
+            headers: {
+              ...options.headers,
+              'Accept': 'application/json',
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          console.log(`✅ Proxy ${currentProxyIndex + 1} succeeded!`);
+          return response;
+        } catch (error) {
+          console.warn(`⚠️ Proxy ${currentProxyIndex + 1} failed:`, error.message);
+          lastError = error;
+
+          // Try next proxy
+          currentProxyIndex = (currentProxyIndex + 1) % CORS_PROXIES.length;
+
+          // Add delay before retry
+          if (i < maxRetries - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
+
+      // All proxies failed, throw last error
+      throw new Error(`All CORS proxies failed. Last error: ${lastError.message}`);
+    }
+
     // Rate Limiter Class
     class RateLimiter {
       constructor(requestsPerSecond = 2) {
@@ -891,7 +942,7 @@
             throw new Error('Invalid Reddit post URL.');
           }
 
-          const response = await fetch(`${postUrl}.json`);
+          const response = await corsAwareFetch(`${postUrl}.json`);
           if (!response.ok) {
             throw new Error('Failed to fetch the Reddit post.');
           }
@@ -945,7 +996,7 @@
 
           const data = await limiter.execute(async () => {
             return await retryWithBackoff(async () => {
-              const response = await fetch(`${postUrl}.json?limit=500&depth=10&sort=top`);
+              const response = await corsAwareFetch(`${postUrl}.json?limit=500&depth=10&sort=top`);
               if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: Failed to fetch comments`);
               }
@@ -1019,7 +1070,7 @@
 
           console.log(`Fetching search results from API: ${apiUrl}`);
 
-          const response = await fetch(apiUrl);
+          const response = await corsAwareFetch(apiUrl);
           if (!response.ok) {
             throw new Error('Failed to fetch search results from API.');
           }
@@ -1104,7 +1155,7 @@
               // Use rate limiter and retry logic
               const data = await rateLimiter.execute(async () => {
                 return await retryWithBackoff(async () => {
-                  const response = await fetch(apiUrl);
+                  const response = await corsAwareFetch(apiUrl);
                   if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: Failed to fetch subreddit listing`);
                   }
@@ -1651,9 +1702,12 @@ const handleCopyLinks = () => {
         <div className="flex flex-col items-center justify-center p-6 w-full min-h-screen" style={{backgroundColor: 'var(--background)'}}>
           {/* Header */}
           <div className="w-full max-w-6xl mb-8 slide-in">
-            <div className="header-gradient p-8 rounded-2xl shadow-xl text-white text-center">
+            <div className="header-gradient p-8 rounded-2xl shadow-xl text-white text-center relative">
               <h1 className="text-4xl font-bold mb-2">Reddit Scraper</h1>
               <p className="text-lg opacity-90">Extract, Save & Analyze Reddit Posts</p>
+              <div className="absolute top-4 right-4 bg-white bg-opacity-20 px-3 py-1 rounded-full text-xs font-semibold">
+                🌐 CORS Proxy Active
+              </div>
             </div>
           </div>
 
