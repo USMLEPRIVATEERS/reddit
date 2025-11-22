@@ -1126,6 +1126,96 @@
         }
       };
 
+      // Helper function to validate if a string is a valid URL
+      const isValidUrl = (str) => {
+        // Already has protocol - valid
+        if (str.startsWith('http://') || str.startsWith('https://')) {
+          return true;
+        }
+
+        // Has www prefix - valid
+        if (str.startsWith('www.')) {
+          return true;
+        }
+
+        // For domain-only patterns, apply stricter validation
+        // Filter out strings with consecutive dots (.., ..., etc.)
+        if (/\.{2,}/.test(str)) {
+          return false;
+        }
+
+        // Filter out strings that start with a number followed by a dot (like "2.then")
+        if (/^\d+\./.test(str)) {
+          return false;
+        }
+
+        // Filter out strings that start or end with dots
+        if (str.startsWith('.') || str.endsWith('.')) {
+          return false;
+        }
+
+        // Must have at least one dot and proper domain structure
+        const parts = str.split('.');
+        if (parts.length < 2) {
+          return false;
+        }
+
+        // Each part should be valid (letters/numbers/hyphens, not empty)
+        for (const part of parts) {
+          if (!part || !/^[a-zA-Z0-9-]+$/.test(part)) {
+            return false;
+          }
+          // Parts shouldn't start or end with hyphens
+          if (part.startsWith('-') || part.endsWith('-')) {
+            return false;
+          }
+        }
+
+        // TLD (last part) should be at least 2 letters and only letters
+        const tld = parts[parts.length - 1].toLowerCase();
+        if (!/^[a-zA-Z]{2,}$/.test(tld)) {
+          return false;
+        }
+
+        // Common TLDs whitelist (most used ones)
+        const commonTlds = [
+          'com', 'org', 'net', 'edu', 'gov', 'mil', 'int',
+          'co', 'uk', 'us', 'ca', 'de', 'fr', 'it', 'es', 'nl', 'be', 'ch', 'at', 'se', 'no', 'dk', 'fi',
+          'au', 'nz', 'jp', 'cn', 'in', 'br', 'mx', 'ar', 'cl',
+          'io', 'ai', 'me', 'tv', 'cc', 'sh', 'ac', 'ad', 'ae', 'af', 'ag', 'am', 'as', 'asia',
+          'app', 'dev', 'web', 'site', 'blog', 'info', 'biz', 'name', 'pro',
+          'online', 'website', 'store', 'shop', 'tech', 'digital', 'cloud', 'link', 'email'
+        ];
+
+        // Blacklist of common English words that are NOT valid TLDs (to catch typos)
+        const wordBlacklist = [
+          'which', 'then', 'its', 'everyone', 'and', 'could', 'planning',
+          'currently', 'still', 'any', 'the', 'that', 'this', 'with', 'from',
+          'they', 'would', 'there', 'their', 'what', 'about', 'when', 'where',
+          'just', 'very', 'even', 'back', 'good', 'want', 'because', 'some',
+          'could', 'would', 'should', 'our', 'first', 'well', 'way', 'many'
+        ];
+
+        // Check if TLD is blacklisted (common English word that's not a real TLD)
+        if (wordBlacklist.includes(tld)) {
+          return false;
+        }
+
+        // For TLDs longer than 4 chars, require them to be in the common list
+        // (to avoid accepting random English words as TLDs)
+        if (tld.length > 4 && !commonTlds.includes(tld)) {
+          return false;
+        }
+
+        // Domain part (before TLD) should start with a letter
+        const domain = parts[parts.length - 2];
+        if (!/^[a-zA-Z]/.test(domain)) {
+          return false;
+        }
+
+        return true;
+      };
+
       // Helper function to extract URLs from text and associate them with the post title and post URL
       const extractUrls = (text, postTitle, postUrl) => {
         const embeddedUrlRegex = /\]\((https?:\/\/[^\s)]+|www\.[^\s)]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\)/g;
@@ -1144,7 +1234,9 @@
         }
 
         const allUrls = [...embeddedUrls, ...standaloneUrls];
-        const uniqueUrls = Array.from(new Set(allUrls));
+        // Filter out invalid URLs before removing duplicates
+        const validUrls = allUrls.filter(isValidUrl);
+        const uniqueUrls = Array.from(new Set(validUrls));
 
         return uniqueUrls.map((url) => ({
           url,
