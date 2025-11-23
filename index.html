@@ -663,6 +663,8 @@
       // States for Lightbox
       const [lightboxOpen, setLightboxOpen] = useState(false);
       const [currentImageIndex, setCurrentImageIndex] = useState(0);
+      const [imageZoom, setImageZoom] = useState(1);
+      const [showPostPanel, setShowPostPanel] = useState(false);
 
       // States for Alternative Search Methods
       const [isLoadingListingComplete, setIsLoadingListingComplete] = useState(false);
@@ -788,7 +790,8 @@
               images.push({
                 url: url,
                 postTitle: post.title,
-                postUrl: post.url
+                postUrl: post.url,
+                post: post
               });
             });
           }
@@ -815,7 +818,8 @@
             images.push({
               url: cleanUrl,
               postTitle: post.title,
-              postUrl: post.url
+              postUrl: post.url,
+              post: post
             });
           });
 
@@ -838,7 +842,8 @@
                 images.push({
                   url: cleanUrl,
                   postTitle: post.title,
-                  postUrl: post.url
+                  postUrl: post.url,
+                  post: post
                 });
               });
 
@@ -872,11 +877,15 @@
       const openLightbox = (index) => {
         setCurrentImageIndex(index);
         setLightboxOpen(true);
+        setImageZoom(1);
+        setShowPostPanel(false);
       };
 
       // Close lightbox
       const closeLightbox = () => {
         setLightboxOpen(false);
+        setImageZoom(1);
+        setShowPostPanel(false);
       };
 
       // Navigate to next image
@@ -884,6 +893,7 @@
         setCurrentImageIndex((prevIndex) =>
           prevIndex === extractedImages.length - 1 ? 0 : prevIndex + 1
         );
+        setImageZoom(1);
       };
 
       // Navigate to previous image
@@ -891,6 +901,47 @@
         setCurrentImageIndex((prevIndex) =>
           prevIndex === 0 ? extractedImages.length - 1 : prevIndex - 1
         );
+        setImageZoom(1);
+      };
+
+      // Zoom functions
+      const zoomIn = () => {
+        setImageZoom(prev => Math.min(prev + 0.25, 3));
+      };
+
+      const zoomOut = () => {
+        setImageZoom(prev => Math.max(prev - 0.25, 0.5));
+      };
+
+      const resetZoom = () => {
+        setImageZoom(1);
+      };
+
+      // Download image
+      const downloadImage = async () => {
+        if (!extractedImages[currentImageIndex]) return;
+
+        try {
+          const imageUrl = extractedImages[currentImageIndex].url;
+          const response = await fetch(imageUrl);
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `reddit-image-${currentImageIndex + 1}.${blob.type.split('/')[1] || 'jpg'}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+        } catch (error) {
+          console.error('Error downloading image:', error);
+          alert('Failed to download image. Please try right-clicking and saving manually.');
+        }
+      };
+
+      // Toggle post panel
+      const togglePostPanel = () => {
+        setShowPostPanel(prev => !prev);
       };
 
       // Handle keyboard navigation
@@ -901,6 +952,9 @@
           if (e.key === 'ArrowRight') nextImage();
           if (e.key === 'ArrowLeft') prevImage();
           if (e.key === 'Escape') closeLightbox();
+          if (e.key === '+' || e.key === '=') zoomIn();
+          if (e.key === '-' || e.key === '_') zoomOut();
+          if (e.key === '0') resetZoom();
         };
 
         window.addEventListener('keydown', handleKeyPress);
@@ -3847,76 +3901,215 @@ const handleCopyLinks = () => {
           {/* Lightbox Modal for Image Viewing */}
           {lightboxOpen && extractedImages.length > 0 && (
             <div
-              className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50"
+              className="fixed inset-0 bg-black bg-opacity-95 z-50 flex"
               onClick={closeLightbox}
             >
-              <button
-                className="absolute top-6 right-6 text-white hover:text-gray-300 focus:outline-none transition-colors z-10"
-                onClick={closeLightbox}
-              >
-                <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              {/* Main Image Area */}
+              <div className={`flex-1 flex flex-col transition-all duration-300 ${showPostPanel ? 'mr-96' : ''}`}>
+                {/* Top Toolbar */}
+                <div className="flex items-center justify-between px-6 py-4 bg-black bg-opacity-50" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center space-x-2">
+                    {/* Zoom Controls */}
+                    <button
+                      className="text-white hover:text-gray-300 focus:outline-none transition-colors p-2 bg-black bg-opacity-50 rounded-lg"
+                      onClick={zoomOut}
+                      title="Zoom Out (-)"
+                    >
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+                      </svg>
+                    </button>
+                    <span className="text-white text-sm font-semibold min-w-[60px] text-center">{Math.round(imageZoom * 100)}%</span>
+                    <button
+                      className="text-white hover:text-gray-300 focus:outline-none transition-colors p-2 bg-black bg-opacity-50 rounded-lg"
+                      onClick={zoomIn}
+                      title="Zoom In (+)"
+                    >
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                      </svg>
+                    </button>
+                    <button
+                      className="text-white hover:text-gray-300 focus:outline-none transition-colors p-2 bg-black bg-opacity-50 rounded-lg"
+                      onClick={resetZoom}
+                      title="Reset Zoom (0)"
+                    >
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                      </svg>
+                    </button>
 
-              {/* Previous Button */}
-              <button
-                className="absolute left-6 top-1/2 transform -translate-y-1/2 text-white hover:text-gray-300 focus:outline-none transition-colors z-10 bg-black bg-opacity-50 rounded-full p-3"
-                onClick={(e) => { e.stopPropagation(); prevImage(); }}
-              >
-                <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
+                    <div className="w-px h-8 bg-gray-600 mx-2"></div>
 
-              {/* Next Button */}
-              <button
-                className="absolute right-6 top-1/2 transform -translate-y-1/2 text-white hover:text-gray-300 focus:outline-none transition-colors z-10 bg-black bg-opacity-50 rounded-full p-3"
-                onClick={(e) => { e.stopPropagation(); nextImage(); }}
-              >
-                <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
+                    {/* Download Button */}
+                    <button
+                      className="text-white hover:text-gray-300 focus:outline-none transition-colors p-2 bg-black bg-opacity-50 rounded-lg"
+                      onClick={downloadImage}
+                      title="Download Image"
+                    >
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                    </button>
 
-              {/* Image Container */}
-              <div className="flex flex-col items-center max-w-7xl max-h-screen p-4" onClick={(e) => e.stopPropagation()}>
-                <div className="relative mb-4">
-                  <img
-                    src={extractedImages[currentImageIndex].url}
-                    alt={`Image ${currentImageIndex + 1} of ${extractedImages.length}`}
-                    className="max-w-full max-h-[80vh] object-contain rounded-lg"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-
-                {/* Image Info */}
-                <div className="bg-black bg-opacity-75 text-white p-4 rounded-xl max-w-2xl">
-                  <p className="font-bold text-lg mb-2">{extractedImages[currentImageIndex].postTitle}</p>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-300">
-                      Image {currentImageIndex + 1} of {extractedImages.length}
-                    </span>
+                    {/* Open on Reddit Button */}
                     <a
                       href={extractedImages[currentImageIndex].postUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-400 hover:text-blue-300 underline flex items-center"
+                      className="text-white hover:text-gray-300 focus:outline-none transition-colors p-2 bg-black bg-opacity-50 rounded-lg flex items-center"
                       onClick={(e) => e.stopPropagation()}
+                      title="Open on Reddit"
                     >
-                      View post
-                      <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                       </svg>
                     </a>
+
+                    {/* Show Post Panel Button */}
+                    <button
+                      className={`text-white hover:text-gray-300 focus:outline-none transition-colors p-2 rounded-lg ${showPostPanel ? 'bg-blue-600' : 'bg-black bg-opacity-50'}`}
+                      onClick={togglePostPanel}
+                      title="Show Post & Comments"
+                    >
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Image Counter and Close Button */}
+                  <div className="flex items-center space-x-4">
+                    <span className="text-white text-sm font-semibold">
+                      {currentImageIndex + 1} / {extractedImages.length}
+                    </span>
+                    <button
+                      className="text-white hover:text-gray-300 focus:outline-none transition-colors"
+                      onClick={closeLightbox}
+                      title="Close (ESC)"
+                    >
+                      <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
 
-                {/* Keyboard Hint */}
-                <div className="text-white text-xs mt-2 text-center opacity-75">
-                  Use ← → arrow keys to navigate • ESC to close
+                {/* Image Display Area */}
+                <div className="flex-1 flex items-center justify-center relative overflow-hidden">
+                  {/* Navigation Buttons */}
+                  <button
+                    className="absolute left-6 text-white hover:text-gray-300 focus:outline-none transition-colors z-10 bg-black bg-opacity-50 rounded-full p-3"
+                    onClick={(e) => { e.stopPropagation(); prevImage(); }}
+                    title="Previous (←)"
+                  >
+                    <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+
+                  <button
+                    className="absolute right-6 text-white hover:text-gray-300 focus:outline-none transition-colors z-10 bg-black bg-opacity-50 rounded-full p-3"
+                    onClick={(e) => { e.stopPropagation(); nextImage(); }}
+                    title="Next (→)"
+                  >
+                    <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+
+                  {/* Image with Zoom */}
+                  <div className="overflow-auto max-w-full max-h-full p-8" onClick={(e) => e.stopPropagation()}>
+                    <img
+                      src={extractedImages[currentImageIndex].url}
+                      alt={`Image ${currentImageIndex + 1} of ${extractedImages.length}`}
+                      className="max-w-full max-h-full object-contain rounded-lg transition-transform duration-200"
+                      style={{ transform: `scale(${imageZoom})`, transformOrigin: 'center' }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                </div>
+
+                {/* Bottom Info Bar */}
+                <div className="px-6 py-4 bg-black bg-opacity-50" onClick={(e) => e.stopPropagation()}>
+                  <p className="text-white font-bold text-lg mb-1 truncate">{extractedImages[currentImageIndex].postTitle}</p>
+                  <div className="text-white text-xs opacity-75">
+                    Use ← → to navigate • +/- to zoom • 0 to reset • ESC to close
+                  </div>
                 </div>
               </div>
+
+              {/* Side Panel for Post and Comments */}
+              {showPostPanel && extractedImages[currentImageIndex].post && (
+                <div
+                  className="fixed right-0 top-0 bottom-0 w-96 bg-white shadow-2xl overflow-y-auto z-50 transform transition-transform duration-300"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Panel Header */}
+                  <div className="sticky top-0 bg-primary text-white p-4 flex items-center justify-between shadow-md z-10">
+                    <h3 className="font-bold text-lg">Post Details</h3>
+                    <button
+                      className="text-white hover:text-gray-300 focus:outline-none transition-colors"
+                      onClick={togglePostPanel}
+                      title="Close Panel"
+                    >
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Post Content */}
+                  <div className="p-4">
+                    <h2 className="text-xl font-bold text-main mb-3">
+                      {extractedImages[currentImageIndex].post.title}
+                    </h2>
+
+                    <div className="flex flex-wrap gap-2 text-xs text-secondary mb-4">
+                      <span className="flex items-center">
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {extractedImages[currentImageIndex].post.created_utc ? new Date(extractedImages[currentImageIndex].post.created_utc * 1000).toLocaleString() : 'Unknown date'}
+                      </span>
+                      {showUserNames && (
+                        <span className="font-semibold text-primary">
+                          by {extractedImages[currentImageIndex].post.author}
+                        </span>
+                      )}
+                      <span className="flex items-center">
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        </svg>
+                        {extractedImages[currentImageIndex].post.num_comments} comments
+                      </span>
+                    </div>
+
+                    <div className="bg-gray-50 p-4 rounded-xl mb-4">
+                      <div className="text-main whitespace-pre-wrap leading-relaxed text-sm">
+                        {extractedImages[currentImageIndex].post.content}
+                      </div>
+                    </div>
+
+                    {/* Comments Section */}
+                    {extractedImages[currentImageIndex].post.comments && extractedImages[currentImageIndex].post.comments.length > 0 && (
+                      <div>
+                        <h4 className="text-lg font-bold text-main mb-3">Comments</h4>
+                        <ul className="list-none space-y-3">
+                          {extractedImages[currentImageIndex].post.comments.map((comment, cIndex) => (
+                            <Comment
+                              key={cIndex}
+                              comment={comment}
+                              showUserNames={showUserNames}
+                              searchTerms={[]}
+                            />
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
