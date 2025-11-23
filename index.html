@@ -641,6 +641,8 @@
       const [showAllUrlsModal, setShowAllUrlsModal] = useState(false);
       const [allExtractedUrls, setAllExtractedUrls] = useState([]);
       const [isExtractingUrls, setIsExtractingUrls] = useState(false);
+      const [urlSearchQuery, setUrlSearchQuery] = useState('');
+      const [googleFilterType, setGoogleFilterType] = useState('all');
 
       // States for Progress Tracking
       const [progressStats, setProgressStats] = useState(null);
@@ -1367,6 +1369,81 @@
         setIsExtractingUrls(false);
       };
 
+      // Google link detection and parsing functions
+      const detectGoogleLinkType = (url) => {
+        if (!url) return null;
+        const lowerUrl = url.toLowerCase();
+
+        if (lowerUrl.includes('docs.google.com/document')) return 'docs';
+        if (lowerUrl.includes('docs.google.com/spreadsheets')) return 'sheets';
+        if (lowerUrl.includes('docs.google.com/presentation')) return 'slides';
+        if (lowerUrl.includes('docs.google.com/forms')) return 'forms';
+        if (lowerUrl.includes('drive.google.com')) return 'drive';
+        if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) return 'youtube';
+        if (lowerUrl.includes('google.com/maps')) return 'maps';
+
+        return null;
+      };
+
+      const getGoogleLinkInfo = (url, type) => {
+        const info = {
+          icon: '📄',
+          typeName: 'Google Link',
+          color: 'blue'
+        };
+
+        switch(type) {
+          case 'docs':
+            info.icon = '📝';
+            info.typeName = 'Google Docs';
+            info.color = 'blue';
+            break;
+          case 'sheets':
+            info.icon = '📊';
+            info.typeName = 'Google Sheets';
+            info.color = 'green';
+            break;
+          case 'slides':
+            info.icon = '📽️';
+            info.typeName = 'Google Slides';
+            info.color = 'yellow';
+            break;
+          case 'forms':
+            info.icon = '📋';
+            info.typeName = 'Google Forms';
+            info.color = 'purple';
+            break;
+          case 'drive':
+            info.icon = '💾';
+            info.typeName = 'Google Drive';
+            info.color = 'indigo';
+            // Try to extract folder name from URL
+            try {
+              const urlObj = new URL(url);
+              const pathParts = urlObj.pathname.split('/');
+              const folderIndex = pathParts.indexOf('folders');
+              if (folderIndex !== -1 && pathParts[folderIndex + 1]) {
+                info.folderId = pathParts[folderIndex + 1];
+              }
+            } catch (e) {
+              console.error('Error parsing Drive URL:', e);
+            }
+            break;
+          case 'youtube':
+            info.icon = '🎥';
+            info.typeName = 'YouTube';
+            info.color = 'red';
+            break;
+          case 'maps':
+            info.icon = '🗺️';
+            info.typeName = 'Google Maps';
+            info.color = 'green';
+            break;
+        }
+
+        return info;
+      };
+
       // LinkPreview Component
       const LinkPreview = ({ url }) => {
         const [metadata, setMetadata] = useState(null);
@@ -1447,14 +1524,34 @@
           }
         };
 
+        // Detect if it's a Google link
+        const googleType = detectGoogleLinkType(url);
+        const googleInfo = googleType ? getGoogleLinkInfo(url, googleType) : null;
+
         return (
-          <div className="mb-3 border-2 border-gray-200 rounded-xl overflow-hidden max-w-md bg-white shadow-sm link-preview">
+          <div className={`mb-3 border-2 ${googleInfo ? `border-${googleInfo.color}-300` : 'border-gray-200'} rounded-xl overflow-hidden max-w-md bg-white shadow-sm link-preview`}>
             <a href={formatUrl(url)} target="_blank" rel="noopener noreferrer" className="flex items-center p-3 hover:bg-gray-50 transition-colors">
-              <img src={metadata?.image || 'https://via.placeholder.com/64'} alt="Site Image" className="w-12 h-12 mr-3 rounded-lg object-cover" />
+              {googleInfo ? (
+                <div className={`w-12 h-12 mr-3 rounded-lg flex items-center justify-center text-2xl bg-${googleInfo.color}-50`}>
+                  {googleInfo.icon}
+                </div>
+              ) : (
+                <img src={metadata?.image || 'https://via.placeholder.com/64'} alt="Site Image" className="w-12 h-12 mr-3 rounded-lg object-cover" />
+              )}
               <div className="flex-1 min-w-0">
+                {googleInfo && (
+                  <span className={`text-xs font-semibold text-${googleInfo.color}-600 mb-1 block`}>
+                    {googleInfo.typeName}
+                  </span>
+                )}
                 <h3 className="text-sm font-bold text-primary truncate">{metadata?.title || 'Loading...'}</h3>
                 {metadata?.description && <p className="text-xs text-secondary mt-1 line-clamp-2">{metadata.description}</p>}
-                <p className="text-xs text-secondary mt-1 font-medium">{metadata?.siteName}</p>
+                {!googleInfo && <p className="text-xs text-secondary mt-1 font-medium">{metadata?.siteName}</p>}
+                {googleInfo?.folderId && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Folder ID: {googleInfo.folderId.substring(0, 15)}...
+                  </p>
+                )}
               </div>
             </a>
           </div>
@@ -3861,6 +3958,46 @@ const handleCopyLinks = () => {
                     )}
                   </h2>
 
+                  {/* Filter Controls */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Search Filter */}
+                    <div>
+                      <label className="block text-sm font-semibold text-main mb-2">
+                        🔍 Search URLs
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Search by URL or title..."
+                        value={urlSearchQuery}
+                        onChange={(e) => setUrlSearchQuery(e.target.value)}
+                        className="input-field w-full px-4 py-2 rounded-xl border-2 border-gray-200 focus:border-primary focus:outline-none"
+                      />
+                    </div>
+
+                    {/* Google Filter Dropdown */}
+                    <div>
+                      <label className="block text-sm font-semibold text-main mb-2">
+                        📱 Filter by Type
+                      </label>
+                      <select
+                        value={googleFilterType}
+                        onChange={(e) => setGoogleFilterType(e.target.value)}
+                        className="input-field w-full px-4 py-2 rounded-xl border-2 border-gray-200 focus:border-primary focus:outline-none"
+                      >
+                        <option value="all">All Links</option>
+                        <option value="google">All Google Services</option>
+                        <option value="docs">📝 Google Docs</option>
+                        <option value="sheets">📊 Google Sheets</option>
+                        <option value="slides">📽️ Google Slides</option>
+                        <option value="forms">📋 Google Forms</option>
+                        <option value="drive">💾 Google Drive</option>
+                        <option value="youtube">🎥 YouTube</option>
+                        <option value="maps">🗺️ Google Maps</option>
+                        <option value="non-google">Non-Google Links</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <button
                     className="btn-primary w-full flex items-center justify-center px-6 py-3 text-white rounded-xl font-semibold text-sm"
                     onClick={handleCopyLinks}
@@ -3872,34 +4009,76 @@ const handleCopyLinks = () => {
                     Copy All Links
                   </button>
 
-                  {allExtractedUrls.length === 0 ? (
-                    <div className="text-center py-12">
-                      <svg className="w-20 h-20 mx-auto text-secondary mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                      </svg>
-                      <p className="text-secondary text-lg font-medium">No URLs found</p>
-                    </div>
-                  ) : (
-                    <ul className="space-y-4">
-                      {allExtractedUrls.map((item, index) => (
-                        <li key={index} className="bg-gray-50 p-4 rounded-xl">
-                          <LinkPreview url={item.url} />
-                          <p className="text-sm text-secondary mt-2">
-                            Found in:
-                            <button
-                              className="font-semibold text-primary hover:underline ml-1"
-                              onClick={() => {
-                                setShowAllUrlsModal(false);
-                                handleSelectPostByUrl(item.postUrl);
-                              }}
-                            >
-                              {item.postTitle}
-                            </button>
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  {(() => {
+                    // Apply filters
+                    let filteredUrls = allExtractedUrls;
+
+                    // Apply search filter
+                    if (urlSearchQuery) {
+                      filteredUrls = filteredUrls.filter(item =>
+                        item.url.toLowerCase().includes(urlSearchQuery.toLowerCase()) ||
+                        item.postTitle.toLowerCase().includes(urlSearchQuery.toLowerCase())
+                      );
+                    }
+
+                    // Apply Google filter
+                    if (googleFilterType !== 'all') {
+                      filteredUrls = filteredUrls.filter(item => {
+                        const linkType = detectGoogleLinkType(item.url);
+
+                        if (googleFilterType === 'google') {
+                          return linkType !== null;
+                        } else if (googleFilterType === 'non-google') {
+                          return linkType === null;
+                        } else {
+                          return linkType === googleFilterType;
+                        }
+                      });
+                    }
+
+                    return (
+                      <>
+                        {/* Results counter */}
+                        {filteredUrls.length > 0 && filteredUrls.length !== allExtractedUrls.length && (
+                          <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-3">
+                            <p className="text-sm text-blue-800 font-semibold">
+                              📊 Showing {filteredUrls.length} of {allExtractedUrls.length} URLs
+                            </p>
+                          </div>
+                        )}
+
+                        {filteredUrls.length === 0 ? (
+                          <div className="text-center py-12">
+                            <svg className="w-20 h-20 mx-auto text-secondary mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                            </svg>
+                            <p className="text-secondary text-lg font-medium">No URLs found matching your filters</p>
+                            <p className="text-secondary text-sm mt-2">Try adjusting your search or filter settings</p>
+                          </div>
+                        ) : (
+                          <ul className="space-y-4">
+                            {filteredUrls.map((item, index) => (
+                              <li key={index} className="bg-gray-50 p-4 rounded-xl">
+                                <LinkPreview url={item.url} />
+                                <p className="text-sm text-secondary mt-2">
+                                  Found in:
+                                  <button
+                                    className="font-semibold text-primary hover:underline ml-1"
+                                    onClick={() => {
+                                      setShowAllUrlsModal(false);
+                                      handleSelectPostByUrl(item.postUrl);
+                                    }}
+                                  >
+                                    {item.postTitle}
+                                  </button>
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   <div className="flex justify-end pt-4">
                     <button
