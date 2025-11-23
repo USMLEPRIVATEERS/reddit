@@ -3999,17 +3999,6 @@ const handleCopyLinks = () => {
                     </div>
                   </div>
 
-                  <button
-                    className="btn-primary w-full flex items-center justify-center px-6 py-3 text-white rounded-xl font-semibold text-sm"
-                    onClick={handleCopyLinks}
-                    disabled={allExtractedUrls.length === 0}
-                  >
-                    <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                    </svg>
-                    Copy All Links
-                  </button>
-
                   {(() => {
                     // Apply filters
                     let filteredUrls = allExtractedUrls;
@@ -4037,8 +4026,40 @@ const handleCopyLinks = () => {
                       });
                     }
 
+                    // Function to copy filtered links
+                    const handleCopyFilteredLinks = () => {
+                      if (filteredUrls.length === 0) return;
+
+                      const urls = filteredUrls.map(item => item.url).join('\n');
+
+                      const textArea = document.createElement('textarea');
+                      textArea.value = urls;
+                      document.body.appendChild(textArea);
+                      textArea.select();
+                      document.execCommand('copy');
+                      document.body.removeChild(textArea);
+
+                      setAlertMessage({
+                        text: `${filteredUrls.length} filtered link(s) copied to clipboard!`,
+                        type: 'success'
+                      });
+                      setShowAlert(true);
+                    };
+
                     return (
                       <>
+                        {/* Copy Filtered Links Button */}
+                        <button
+                          className="btn-primary w-full flex items-center justify-center px-6 py-3 text-white rounded-xl font-semibold text-sm"
+                          onClick={handleCopyFilteredLinks}
+                          disabled={filteredUrls.length === 0}
+                        >
+                          <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                          </svg>
+                          Copy {filteredUrls.length === allExtractedUrls.length ? 'All' : 'Filtered'} Links ({filteredUrls.length})
+                        </button>
+
                         {/* Results counter */}
                         {filteredUrls.length > 0 && filteredUrls.length !== allExtractedUrls.length && (
                           <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-3">
