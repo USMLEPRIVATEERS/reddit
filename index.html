@@ -1491,6 +1491,7 @@
             subreddit: post.subreddit || 'unknown',
             created_utc: post.created_utc || null,
             num_comments: post.num_comments || 0,
+            score: post.score || 0,
             author: post.author || '[deleted]',
             comments,
           };
@@ -1667,6 +1668,7 @@
                     subreddit: post.data.subreddit || 'unknown',
                     created_utc: post.data.created_utc || null,
                     num_comments: post.data.num_comments || 0,
+                    score: post.data.score || 0,
                     author: post.data.author || '[deleted]',
                     comments: [],
                     imageUrls: imageUrls, // Store extracted image URLs
@@ -1927,6 +1929,7 @@
                       subreddit: post.data.subreddit || 'unknown',
                       created_utc: post.data.created_utc || null,
                       num_comments: post.data.num_comments || 0,
+                      score: post.data.score || 0,
                       author: post.data.author || '[deleted]',
                       comments: [],
                       imageUrls: imageUrls,
@@ -2166,6 +2169,7 @@
                     subreddit: post.data.subreddit || 'unknown',
                     created_utc: post.data.created_utc || null,
                     num_comments: post.data.num_comments || 0,
+                    score: post.data.score || 0,
                     author: post.data.author || '[deleted]',
                     comments: [],
                     imageUrls: imageUrls, // Store extracted image URLs
@@ -4210,9 +4214,10 @@ const handleCopyLinks = () => {
                           </div>
 
                           {/* Post Content */}
-                          {currentPost.selftext && (
+                          {currentPost.content && currentPost.content !== 'No content found.' && (
                             <div className="bg-gray-50 p-4 rounded-xl">
-                              <p className="text-sm whitespace-pre-wrap">{currentPost.selftext}</p>
+                              <h4 className="text-md font-bold text-main mb-2">Post Content:</h4>
+                              <p className="text-sm whitespace-pre-wrap">{currentPost.content}</p>
                             </div>
                           )}
 
