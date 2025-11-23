@@ -663,6 +663,8 @@
       // States for Lightbox
       const [lightboxOpen, setLightboxOpen] = useState(false);
       const [currentImageIndex, setCurrentImageIndex] = useState(0);
+      const [imageZoom, setImageZoom] = useState(1);
+      const [showPostPanel, setShowPostPanel] = useState(false);
 
       // States for Alternative Search Methods
       const [isLoadingListingComplete, setIsLoadingListingComplete] = useState(false);
@@ -872,11 +874,15 @@
       const openLightbox = (index) => {
         setCurrentImageIndex(index);
         setLightboxOpen(true);
+        setImageZoom(1);
+        setShowPostPanel(false);
       };
 
       // Close lightbox
       const closeLightbox = () => {
         setLightboxOpen(false);
+        setImageZoom(1);
+        setShowPostPanel(false);
       };
 
       // Navigate to next image
@@ -884,6 +890,8 @@
         setCurrentImageIndex((prevIndex) =>
           prevIndex === extractedImages.length - 1 ? 0 : prevIndex + 1
         );
+        setImageZoom(1);
+        setShowPostPanel(false);
       };
 
       // Navigate to previous image
@@ -891,6 +899,53 @@
         setCurrentImageIndex((prevIndex) =>
           prevIndex === 0 ? extractedImages.length - 1 : prevIndex - 1
         );
+        setImageZoom(1);
+        setShowPostPanel(false);
+      };
+
+      // Zoom functions
+      const zoomIn = () => {
+        setImageZoom((prevZoom) => Math.min(prevZoom + 0.25, 3));
+      };
+
+      const zoomOut = () => {
+        setImageZoom((prevZoom) => Math.max(prevZoom - 0.25, 0.5));
+      };
+
+      const resetZoom = () => {
+        setImageZoom(1);
+      };
+
+      // Download image
+      const downloadImage = async (imageUrl, imageName) => {
+        try {
+          const response = await fetch(imageUrl);
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = imageName || 'reddit-image.jpg';
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } catch (error) {
+          console.error('Error downloading image:', error);
+          // Fallback: open in new tab
+          window.open(imageUrl, '_blank');
+        }
+      };
+
+      // Toggle post panel
+      const togglePostPanel = () => {
+        setShowPostPanel(!showPostPanel);
+      };
+
+      // Get post data for current image
+      const getCurrentImagePost = () => {
+        if (!extractedImages[currentImageIndex]) return null;
+        const currentImage = extractedImages[currentImageIndex];
+        return posts.find(post => post.url === currentImage.postUrl);
       };
 
       // Handle keyboard navigation
@@ -1050,6 +1105,12 @@
             return sortVariations.map(sort => {
               const newParams = new URLSearchParams(parsedUrl.search);
               newParams.set('sort', sort);
+
+              // Ensure restrict_sr is set for subreddit searches
+              if (!newParams.has('restrict_sr')) {
+                newParams.set('restrict_sr', 'on');
+              }
+
               return `${baseSearchUrl}?${newParams.toString()}`;
             });
           } else if (urlType === 'listing') {
@@ -1065,6 +1126,10 @@
               let url = `${baseUrl}/${listingType}/`;
               if (timeParam && (listingType === 'top' || listingType === 'controversial')) {
                 url += `?t=${timeParam}`;
+              }
+              // If dates are set but no time param, use 'all' for top/controversial
+              else if ((startDate || endDate) && (listingType === 'top' || listingType === 'controversial')) {
+                url += `?t=all`;
               }
               return url;
             });
@@ -1531,6 +1596,13 @@
 
           console.log(`🔍 Starting DEEP SEARCH pagination for query: "${q}"`);
           setExtractionLog(prev => [...prev, `🔍 Deep search: "${queryParam}" in r/${subreddit}`]);
+
+          // Log date filtering if active
+          if (startTimestamp || endTimestamp) {
+            const dateFilterMsg = `📅 Date filter active: ${startDate || 'any'} to ${endDate || 'any'}`;
+            console.log(dateFilterMsg);
+            setExtractionLog(prev => [...prev, dateFilterMsg]);
+          }
 
           // Continue fetching pages until we hit target or run out of results
           while (fetchedPosts.length < numPostsToSave && consecutiveEmptyPages < 3) {
@@ -2016,6 +2088,13 @@
           let consecutiveEmptyPages = 0;
 
           progressTracker.update({ currentOperation: `Fetching posts from r/${subreddit}...` });
+
+          // Log date filtering if active
+          if (startTimestamp || endTimestamp) {
+            const dateFilterMsg = `📅 Date filter active: ${startDate || 'any'} to ${endDate || 'any'}`;
+            console.log(dateFilterMsg);
+            setExtractionLog(prev => [...prev, dateFilterMsg]);
+          }
 
           // Continue fetching until we hit the target or run out of posts
           while (fetchedPosts.length < numPostsToSave && consecutiveEmptyPages < 3) {
@@ -3942,14 +4021,92 @@ const handleCopyLinks = () => {
               className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50"
               onClick={closeLightbox}
             >
+              {/* Close Button */}
               <button
-                className="absolute top-6 right-6 text-white hover:text-gray-300 focus:outline-none transition-colors z-10"
+                className="absolute top-6 right-6 text-white hover:text-gray-300 focus:outline-none transition-colors z-20"
                 onClick={closeLightbox}
               >
                 <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
+
+              {/* Control Panel - Top Left */}
+              <div className="absolute top-6 left-6 z-20 bg-black bg-opacity-75 rounded-xl p-3 space-y-2">
+                {/* Zoom Controls */}
+                <div className="flex flex-col space-y-2">
+                  <button
+                    className="text-white hover:text-gray-300 focus:outline-none transition-colors bg-black bg-opacity-50 rounded-lg p-2"
+                    onClick={(e) => { e.stopPropagation(); zoomIn(); }}
+                    title="Zoom In"
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                  </button>
+                  <button
+                    className="text-white hover:text-gray-300 focus:outline-none transition-colors bg-black bg-opacity-50 rounded-lg p-2"
+                    onClick={(e) => { e.stopPropagation(); zoomOut(); }}
+                    title="Zoom Out"
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+                    </svg>
+                  </button>
+                  <button
+                    className="text-white hover:text-gray-300 focus:outline-none transition-colors bg-black bg-opacity-50 rounded-lg p-2"
+                    onClick={(e) => { e.stopPropagation(); resetZoom(); }}
+                    title="Reset Zoom"
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                    </svg>
+                  </button>
+                  <div className="text-white text-xs text-center">{Math.round(imageZoom * 100)}%</div>
+                </div>
+
+                {/* Download Button */}
+                <button
+                  className="text-white hover:text-gray-300 focus:outline-none transition-colors bg-black bg-opacity-50 rounded-lg p-2 w-full"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    downloadImage(
+                      extractedImages[currentImageIndex].url,
+                      `reddit-image-${currentImageIndex + 1}.jpg`
+                    );
+                  }}
+                  title="Download Image"
+                >
+                  <svg className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                </button>
+
+                {/* View on Reddit Button */}
+                <a
+                  href={extractedImages[currentImageIndex].url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-white hover:text-gray-300 focus:outline-none transition-colors bg-black bg-opacity-50 rounded-lg p-2 w-full block"
+                  onClick={(e) => e.stopPropagation()}
+                  title="Open Image URL"
+                >
+                  <svg className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+
+                {/* Show Post Button */}
+                <button
+                  className={`text-white hover:text-gray-300 focus:outline-none transition-colors ${showPostPanel ? 'bg-blue-600' : 'bg-black bg-opacity-50'} rounded-lg p-2 w-full`}
+                  onClick={(e) => { e.stopPropagation(); togglePostPanel(); }}
+                  title="Toggle Post View"
+                >
+                  <svg className="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </button>
+              </div>
 
               {/* Previous Button */}
               <button
@@ -3971,43 +4128,121 @@ const handleCopyLinks = () => {
                 </svg>
               </button>
 
-              {/* Image Container */}
-              <div className="flex flex-col items-center max-w-7xl max-h-screen p-4" onClick={(e) => e.stopPropagation()}>
-                <div className="relative mb-4">
-                  <img
-                    src={extractedImages[currentImageIndex].url}
-                    alt={`Image ${currentImageIndex + 1} of ${extractedImages.length}`}
-                    className="max-w-full max-h-[80vh] object-contain rounded-lg"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-
-                {/* Image Info */}
-                <div className="bg-black bg-opacity-75 text-white p-4 rounded-xl max-w-2xl">
-                  <p className="font-bold text-lg mb-2">{extractedImages[currentImageIndex].postTitle}</p>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-300">
-                      Image {currentImageIndex + 1} of {extractedImages.length}
-                    </span>
-                    <a
-                      href={extractedImages[currentImageIndex].postUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-400 hover:text-blue-300 underline flex items-center"
+              {/* Main Content Area */}
+              <div className="flex items-center justify-center w-full h-full" onClick={(e) => e.stopPropagation()}>
+                {/* Image Container */}
+                <div className={`flex flex-col items-center ${showPostPanel ? 'w-1/2' : 'w-full'} max-h-screen p-4 transition-all duration-300`}>
+                  <div className="relative mb-4 overflow-auto max-h-[80vh]" style={{ maxWidth: '90%' }}>
+                    <img
+                      src={extractedImages[currentImageIndex].url}
+                      alt={`Image ${currentImageIndex + 1} of ${extractedImages.length}`}
+                      className="max-w-full object-contain rounded-lg transition-transform duration-200"
+                      style={{ transform: `scale(${imageZoom})` }}
                       onClick={(e) => e.stopPropagation()}
-                    >
-                      View post
-                      <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    </a>
+                    />
+                  </div>
+
+                  {/* Image Info */}
+                  <div className="bg-black bg-opacity-75 text-white p-4 rounded-xl max-w-2xl">
+                    <p className="font-bold text-lg mb-2">{extractedImages[currentImageIndex].postTitle}</p>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-300">
+                        Image {currentImageIndex + 1} of {extractedImages.length}
+                      </span>
+                      <a
+                        href={extractedImages[currentImageIndex].postUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:text-blue-300 underline flex items-center"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        View post on Reddit
+                        <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Keyboard Hint */}
+                  <div className="text-white text-xs mt-2 text-center opacity-75">
+                    Use ← → arrow keys to navigate • ESC to close
                   </div>
                 </div>
 
-                {/* Keyboard Hint */}
-                <div className="text-white text-xs mt-2 text-center opacity-75">
-                  Use ← → arrow keys to navigate • ESC to close
-                </div>
+                {/* Post Panel (Right Side) */}
+                {showPostPanel && (() => {
+                  const currentPost = getCurrentImagePost();
+                  return (
+                    <div className="w-1/2 h-full bg-white overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+                      {/* Close Post Panel Button */}
+                      <button
+                        className="absolute top-6 right-20 text-white hover:text-gray-300 focus:outline-none transition-colors z-20 bg-black bg-opacity-75 rounded-full p-2"
+                        onClick={(e) => { e.stopPropagation(); setShowPostPanel(false); }}
+                        title="Close Post Panel"
+                      >
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+
+                      {currentPost ? (
+                        <div className="space-y-4">
+                          {/* Post Header */}
+                          <div className="border-b pb-4">
+                            <h3 className="text-2xl font-bold text-main mb-2">{currentPost.title}</h3>
+                            <div className="flex items-center text-sm text-secondary space-x-4">
+                              <span>👤 {currentPost.author}</span>
+                              <span>⬆️ {currentPost.score}</span>
+                              <span>💬 {currentPost.num_comments}</span>
+                            </div>
+                            <a
+                              href={currentPost.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline text-sm mt-2 inline-flex items-center"
+                            >
+                              View on Reddit
+                              <svg className="w-3 h-3 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                            </a>
+                          </div>
+
+                          {/* Post Content */}
+                          {currentPost.selftext && (
+                            <div className="bg-gray-50 p-4 rounded-xl">
+                              <p className="text-sm whitespace-pre-wrap">{currentPost.selftext}</p>
+                            </div>
+                          )}
+
+                          {/* Comments Section */}
+                          {currentPost.comments && currentPost.comments.length > 0 && (
+                            <div className="space-y-4">
+                              <h4 className="text-xl font-bold text-main border-b pb-2">
+                                Comments ({currentPost.comments.length})
+                              </h4>
+                              {currentPost.comments.map((comment, idx) => (
+                                <div key={idx} className="bg-gray-50 p-4 rounded-xl border-l-4 border-primary">
+                                  <div className="flex items-center text-sm text-secondary mb-2">
+                                    <span className="font-semibold">👤 {comment.author}</span>
+                                    <span className="mx-2">•</span>
+                                    <span>⬆️ {comment.score}</span>
+                                  </div>
+                                  <p className="text-sm whitespace-pre-wrap">{comment.body}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center py-12">
+                          <p className="text-secondary text-lg">Post not found</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
